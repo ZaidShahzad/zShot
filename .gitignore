@@ -1,0 +1,4 @@
+# Claude Code worktrees, one per thread
+.claude/worktrees/
+
+.DS_Store
