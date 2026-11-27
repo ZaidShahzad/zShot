@@ -20,13 +20,18 @@ final class HotKey {
         HotKey.current = self
     }
 
-    func register(_ combo: HotKeyCombo) {
+    /// Returns false when another app holds the combo. Exclusive, so macOS reports that instead of accepting it silently.
+    @discardableResult
+    func register(_ combo: HotKeyCombo) -> Bool {
         unregister()
         let id = EventHotKeyID(signature: OSType(0x7A53_6874), id: 1)
-        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetApplicationEventTarget(), 0, &ref)
+        let status = RegisterEventHotKey(
+            combo.keyCode, combo.modifiers, id, GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &ref)
         if status != noErr {
             Log.app.error("RegisterEventHotKey failed: \(status)")
+            return false
         }
+        return true
     }
 
     func unregister() {
