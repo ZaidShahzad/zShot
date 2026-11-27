@@ -38,6 +38,10 @@ final class ScreenshotController {
     /// `hotKeyTime` is seconds since boot when the Capture hotkey was pressed.
     func enter(hotKeyTime: TimeInterval) {
         guard session == nil, let fallbackPanel = panels.first else { return }
+        guard ScreenRecordingPermission.isGranted else {
+            ScreenRecordingPermission.handleMissing()
+            return
+        }
         entry += 1
         let entry = self.entry
         let mouse = NSEvent.mouseLocation
@@ -68,7 +72,7 @@ final class ScreenshotController {
             guard let self, self.entry == entry, self.session != nil else { return images }
             guard let images else {
                 self.exitScreenshotMode()
-                ScreenRecordingPermission.showMissingAlert()
+                ScreenRecordingPermission.captureFailed()
                 return nil
             }
             for panel in self.panels {
@@ -137,7 +141,7 @@ final class ScreenshotController {
         let date = Date()
         Task { [weak self] in
             guard let images = await freeze?.value else {
-                ScreenRecordingPermission.showMissingAlert()
+                ScreenRecordingPermission.captureFailed()
                 return
             }
             let output = await Task.detached(priority: .userInitiated) { () -> (RenderedScreenshot, Data)? in

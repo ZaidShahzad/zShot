@@ -12,8 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        ScreenRecordingPermission.requestIfNeeded()
-
         let controller = ScreenshotController(preferences: preferences, capturer: capturer)
         self.controller = controller
         hotKey = HotKey { [weak controller] time in
@@ -25,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        refreshCapturer()
+    }
+
+    /// Without permission, asking ScreenCaptureKit for content makes macOS prompt, so wait for the hotkey instead.
+    private func refreshCapturer() {
+        guard ScreenRecordingPermission.isGranted else { return }
         let capturer = self.capturer
         Task {
             await capturer.refresh()
@@ -32,9 +36,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerHotKey() {
-        hotKey?.register(preferences.hotKey)
-        takeScreenshotItem?.keyEquivalent = preferences.hotKey.key
-        takeScreenshotItem?.keyEquivalentModifierMask = preferences.hotKey.modifierFlags
+        let combo = preferences.hotKey
+        let registered = hotKey?.register(combo) ?? false
+        takeScreenshotItem?.keyEquivalent = registered ? combo.key : ""
+        takeScreenshotItem?.keyEquivalentModifierMask = combo.modifierFlags
+        if !registered {
+            // Later on the main actor, so launch or the Settings recorder finishes before the alert blocks.
+            Task { [weak self] in
+                self?.showHotKeyTakenAlert(combo)
+            }
+        }
+    }
+
+    private func showHotKeyTakenAlert(_ combo: HotKeyCombo) {
+        let alert = NSAlert()
+        alert.messageText = "\(combo.display) is taken by another app"
+        alert.informativeText = """
+            Another app, for example another screenshot tool, already uses this shortcut. \
+            Quit that app and reopen zShot, or pick a different Capture hotkey in zShot Settings.
+            """
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn {
+            openSettings()
+        }
     }
 
     private func buildStatusItem() {
@@ -99,9 +125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screensChanged() {
         controller?.rebuildPanels()
-        let capturer = self.capturer
-        Task {
-            await capturer.refresh()
-        }
+        refreshCapturer()
     }
 }

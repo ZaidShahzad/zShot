@@ -28,7 +28,7 @@ zShot appears in the menu bar. It has no Dock icon and no window until you open 
 
 ## Keep the Screen Recording permission between rebuilds
 
-macOS ties the Screen Recording permission to the app's code signature. An ad-hoc signature changes on every build, so macOS asks again after each rebuild. To avoid that, create a self-signed signing certificate once:
+macOS ties the Screen Recording permission to the app's code signature. An ad-hoc signature changes on every build, so macOS forgets the permission after each rebuild. To avoid that, create a self-signed signing certificate once:
 
 ```sh
 ./scripts/make-dev-cert.sh
@@ -38,7 +38,15 @@ The script adds a certificate named `zShot Development` to your login keychain. 
 
 ## Grant permissions
 
-The first time you press the Capture hotkey, macOS asks for Screen Recording permission. Turn on zShot in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen zShot.
+zShot never asks for Screen Recording permission at launch. The first time you press the Capture hotkey, macOS asks once. Turn on zShot in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen zShot. macOS only applies the permission after a restart.
+
+If permission is still missing, later presses of the hotkey show zShot's own alert instead of the macOS prompt. Its Quit and Reopen button restarts zShot for you. Its Open System Settings button adds zShot back to the list if it is missing.
+
+With an ad-hoc signature, macOS treats each build as a new app, so an existing switch belongs to an older build. After you rebuild, reset the permission, quit any running zShot, then open the new build and allow it again:
+
+```sh
+tccutil reset ScreenCapture io.github.zaidshahzad.zshot
+```
 
 zShot does not need the Accessibility permission.
 

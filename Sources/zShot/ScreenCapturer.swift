@@ -78,24 +78,79 @@ final class ScreenCapturer {
     }
 }
 
+/// Owns Screen Recording permission. macOS is asked only from the Capture hotkey, never at launch.
+@MainActor
 enum ScreenRecordingPermission {
-    static func requestIfNeeded() {
-        if !CGPreflightScreenCaptureAccess() {
+    private static let didRequestKey = "didRequestScreenRecording"
+    private static var knownGranted = false
+    private static var isAlertShown = false
+
+    /// Never prompts. Once true it is remembered, so later hotkeys skip the check.
+    static var isGranted: Bool {
+        if !knownGranted {
+            knownGranted = CGPreflightScreenCaptureAccess()
+        }
+        return knownGranted
+    }
+
+    /// The first time ever, asks macOS. After that, shows zShot's own alert.
+    static func handleMissing() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: didRequestKey) {
+            showMissingAlert()
+        } else {
+            defaults.set(true, forKey: didRequestKey)
             CGRequestScreenCaptureAccess()
         }
     }
 
-    @MainActor
-    static func showMissingAlert() {
+    static func captureFailed() {
+        knownGranted = false
+        showMissingAlert()
+    }
+
+    private static func showMissingAlert() {
+        guard !isAlertShown else { return }
+        isAlertShown = true
+        defer { isAlertShown = false }
+
         let alert = NSAlert()
-        alert.messageText = "zShot needs Screen Recording permission"
-        alert.informativeText = "Turn on zShot in System Settings > Privacy & Security > Screen & System Audio Recording, then take the Screenshot again."
+        alert.messageText = "zShot can't see your screen yet"
+        alert.informativeText = """
+            Turn on zShot in System Settings > Privacy & Security > Screen & System Audio Recording, \
+            then quit and reopen zShot. macOS only applies the change after a restart.
+
+            If zShot is already on there, a rebuilt copy counts as a new app. \
+            Select zShot, remove it with the minus button, then try again.
+            """
+        alert.addButton(withTitle: "Quit and Reopen")
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            relaunch()
+        case .alertSecondButtonReturn:
+            // Puts zShot back in the list after a tccutil reset or the minus button removed it.
+            CGRequestScreenCaptureAccess()
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
+            }
+        default:
+            break
         }
+    }
+
+    private static func relaunch() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 0.5; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        do {
+            try process.run()
+        } catch {
+            Log.app.error("Relaunching zShot failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        NSApp.terminate(nil)
     }
 }
