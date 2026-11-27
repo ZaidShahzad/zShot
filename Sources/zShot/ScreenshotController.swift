@@ -144,22 +144,29 @@ final class ScreenshotController {
                 ScreenRecordingPermission.captureFailed()
                 return
             }
-            let output = await Task.detached(priority: .userInitiated) { () -> (RenderedScreenshot, Data)? in
-                guard let rendered = ScreenshotRenderer.render(selection: selection, displays: images, annotations: annotations),
-                      let png = PNGEncoder.encode(rendered.image, scale: rendered.scale)
-                else { return nil }
-                return (rendered, png)
+            let rendered = await Task.detached(priority: .userInitiated) {
+                ScreenshotRenderer.render(selection: selection, displays: images, annotations: annotations)
             }.value
-            guard let output else {
+            guard let rendered else {
                 Log.app.error("Rendering the Screenshot failed")
                 return
             }
-            let (rendered, png) = output
+            Log.timing("finish\u{2192}rendered", since: start)
 
+            let promise = copy ? Output.copyToClipboard() : nil
             if copy {
-                Output.copyToClipboard(png)
                 Log.timing("finish\u{2192}clipboard", since: start)
             }
+            let png = await Task.detached(priority: .userInitiated) {
+                PNGEncoder.encode(rendered.image, scale: rendered.scale)
+            }.value
+            promise?.fulfill(png)
+            Log.timing("finish\u{2192}png", since: start)
+            guard let png else {
+                Log.app.error("Encoding the Screenshot failed")
+                return
+            }
+
             var fileURL: URL?
             if save {
                 fileURL = await Task.detached(priority: .utility) { () -> URL? in

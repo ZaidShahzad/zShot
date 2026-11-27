@@ -27,8 +27,10 @@ public enum ScreenshotRenderer {
         let minY = (selection.minY * scale).rounded()
         let width = Int((selection.maxX * scale).rounded() - minX)
         let height = Int((selection.maxY * scale).rounded() - minY)
+        // Drawing in the display's own color space copies pixels without a per-pixel color conversion.
+        let displaySpace = visible.first?.image.colorSpace
         guard width > 0, height > 0,
-              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let space = displaySpace?.model == .rgb ? displaySpace : CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
                   data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
