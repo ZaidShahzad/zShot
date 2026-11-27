@@ -70,27 +70,24 @@ final class OverlayPanel: NSPanel {
         let origin = screenFrame.origin
         func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
 
-        var hole: CGRect?
+        var hole: ChromeView.Hole?
         var selection: CGRect?
         var selectingSize: CGSize?
         switch session.phase {
         case .choosing(let hover), .pressing(_, let hover):
-            hole = hover
+            if let hover { hole = .window(local(hover)) }
         case .selecting(let anchor, let current):
-            hole = Geometry.rect(from: anchor, to: current)
-            selectingSize = hole?.size
+            let rect = Geometry.rect(from: anchor, to: current)
+            hole = .area(local(rect))
+            selectingSize = rect.size
         case .annotating(let rect, _):
-            hole = rect
+            hole = .area(local(rect))
             selection = rect
         }
-        let isWindowHover = selection == nil && selectingSize == nil
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        chrome.update(
-            hole: hole.map(local),
-            borderColor: isWindowHover ? NSColor.controlAccentColor.cgColor : NSColor.white.cgColor,
-            borderWidth: isWindowHover ? 2 : 1)
+        chrome.update(hole: hole)
         CATransaction.commit()
 
         if let selection {
@@ -233,20 +230,31 @@ private final class BackdropView: NSView {
     }
 }
 
-/// Dims everything outside the hole and borders it. Plain layers, so moving them costs no redraw.
+/// Dims everything outside the hole and borders it. The dim and the border share one hole path, so they move together.
 private final class ChromeView: NSView {
-    private let dims: [CALayer] = (0..<4).map { _ in CALayer() }
-    private let border = CALayer()
+    enum Hole: Equatable {
+        /// The hovered window: rounded like a window, bordered in the accent color, glides to the next window.
+        case window(CGRect)
+        /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
+        case area(CGRect)
+    }
+
+    private static let windowCornerRadius: CGFloat = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+        OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 10
+
+    private let dim = CAShapeLayer()
+    private let border = CAShapeLayer()
+    private var hole: Hole?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        let dim = NSColor.black.withAlphaComponent(0.4).cgColor
-        for layer in dims {
-            layer.backgroundColor = dim
-            self.layer?.addSublayer(layer)
-        }
-        self.layer?.addSublayer(border)
+        dim.fillColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        dim.fillRule = .evenOdd
+        dim.path = CGPath(rect: bounds, transform: nil)
+        border.fillColor = nil
+        layer?.addSublayer(dim)
+        layer?.addSublayer(border)
     }
 
     required init?(coder: NSCoder) {
@@ -255,26 +263,74 @@ private final class ChromeView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func update(hole: CGRect?, borderColor: CGColor, borderWidth: CGFloat) {
-        let b = bounds
-        let h = hole?.intersection(b) ?? .null
-        if h.isNull {
-            dims[0].frame = b
-            for layer in dims.dropFirst() { layer.frame = .zero }
-        } else {
-            dims[0].frame = CGRect(x: b.minX, y: h.maxY, width: b.width, height: b.maxY - h.maxY)
-            dims[1].frame = CGRect(x: b.minX, y: b.minY, width: b.width, height: h.minY - b.minY)
-            dims[2].frame = CGRect(x: b.minX, y: h.minY, width: h.minX - b.minX, height: h.height)
-            dims[3].frame = CGRect(x: h.maxX, y: h.minY, width: b.maxX - h.maxX, height: h.height)
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        let scale = window?.backingScaleFactor ?? 1
+        dim.contentsScale = scale
+        border.contentsScale = scale
+    }
+
+    func update(hole newHole: Hole?) {
+        guard newHole != hole else { return }
+        let previous = hole
+        hole = newHole
+
+        let dimPath = CGMutablePath()
+        dimPath.addRect(bounds)
+        var borderPath: CGPath?
+        switch newHole {
+        case .window(let rect):
+            let width: CGFloat = 1.5
+            dimPath.addPath(Self.roundedRect(rect, radius: Self.windowCornerRadius))
+            borderPath = Self.roundedRect(rect.insetBy(dx: -width / 2, dy: -width / 2), radius: Self.windowCornerRadius + width / 2)
+            border.strokeColor = NSColor.controlAccentColor.cgColor
+            border.lineWidth = width
+        case .area(let rect):
+            let width: CGFloat = 1
+            dimPath.addRect(rect)
+            borderPath = CGPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2), transform: nil)
+            border.strokeColor = NSColor.white.cgColor
+            border.lineWidth = width
+        case nil:
+            break
         }
-        if let hole {
-            border.isHidden = false
-            border.frame = hole.insetBy(dx: -borderWidth, dy: -borderWidth)
-            border.borderColor = borderColor
-            border.borderWidth = borderWidth
-        } else {
-            border.isHidden = true
+
+        let oldDimPath = dim.presentation()?.path ?? dim.path
+        let oldBorderPath = border.presentation()?.path ?? border.path
+        dim.path = dimPath
+        border.path = borderPath
+
+        switch (previous, newHole) {
+        case (.some(.window(_)), .some(.window(_))):
+            Self.glide(dim, from: oldDimPath)
+            Self.glide(border, from: oldBorderPath)
+        case (_, .some(.window(_))):
+            dim.removeAllAnimations()
+            border.removeAllAnimations()
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = 0.08
+            border.add(fade, forKey: "opacity")
+        default:
+            dim.removeAllAnimations()
+            border.removeAllAnimations()
         }
+    }
+
+    /// Keyed by "path", so each new glide replaces the running one and starts from where it is on screen.
+    private static func glide(_ layer: CAShapeLayer, from path: CGPath?) {
+        let animation = CABasicAnimation(keyPath: "path")
+        animation.fromValue = path
+        animation.duration = 0.12
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(animation, forKey: "path")
+    }
+
+    /// CGPath traps on a corner radius over half the shorter side.
+    private static func roundedRect(_ rect: CGRect, radius: CGFloat) -> CGPath {
+        let clamped = max(0, min(radius, rect.width / 2, rect.height / 2))
+        return CGPath(roundedRect: rect, cornerWidth: clamped, cornerHeight: clamped, transform: nil)
     }
 }
 
