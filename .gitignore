@@ -2,3 +2,8 @@
 .claude/worktrees/
 
 .DS_Store
+
+# SwiftPM and app bundle output
+.build/
+build/
+.swiftpm/
