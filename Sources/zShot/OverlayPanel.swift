@@ -233,7 +233,7 @@ private final class BackdropView: NSView {
 /// Dims everything outside the hole and borders it. The dim and the border share one hole path, so they move together.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered window: rounded like a window, bordered in green, glides to the next window.
+        /// The hovered window: rounded like a window, bordered in green, cross-fades to the next window.
         case window(CGRect)
         /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
@@ -252,7 +252,7 @@ private final class ChromeView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        let dimColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        let dimColor = NSColor.black.withAlphaComponent(0.5).cgColor
         dim.fillColor = dimColor
         dim.fillRule = .evenOdd
         dim.path = CGPath(rect: bounds, transform: nil)
@@ -305,8 +305,6 @@ private final class ChromeView: NSView {
             break
         }
 
-        let oldDimPath = dim.presentation()?.path ?? dim.path
-        let oldBorderPath = border.presentation()?.path ?? border.path
         if let area {
             layOutAreaDims(around: area)
         } else {
@@ -320,8 +318,8 @@ private final class ChromeView: NSView {
 
         switch (previous, newHole) {
         case (.some(.window(_)), .some(.window(_))):
-            Self.glide(dim, from: oldDimPath)
-            Self.glide(border, from: oldBorderPath)
+            Self.crossFade(dim)
+            Self.crossFade(border)
         case (_, .some(.window(_))):
             dim.removeAllAnimations()
             border.removeAllAnimations()
@@ -350,13 +348,13 @@ private final class ChromeView: NSView {
         areaDims[3].frame = CGRect(x: h.maxX, y: h.minY, width: b.maxX - h.maxX, height: h.height)
     }
 
-    /// Keyed by "path", so each new glide replaces the running one and starts from where it is on screen.
-    private static func glide(_ layer: CAShapeLayer, from path: CGPath?) {
-        let animation = CABasicAnimation(keyPath: "path")
-        animation.fromValue = path
-        animation.duration = 0.05
-        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        layer.add(animation, forKey: "path")
+    /// Fades from what is on screen now to the new window, so a fast sweep stays smooth. Purely visual: input never waits.
+    private static func crossFade(_ layer: CALayer) {
+        let transition = CATransition()
+        transition.type = .fade
+        transition.duration = 0.07
+        transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(transition, forKey: kCATransition)
     }
 
     /// CGPath traps on a corner radius over half the shorter side.
