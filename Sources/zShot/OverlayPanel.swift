@@ -13,7 +13,7 @@ final class OverlayPanel: NSPanel {
     private let chrome: ChromeView
     private let canvas = CanvasView(frame: .zero)
     private let sizeLabel = NSTextField(labelWithString: "")
-    private let toolbar = Toolbar()
+    private let toolStrip = Toolbar()
     private var mouseDownInToolbar = false
 
     init(screen: NSScreen) {
@@ -44,12 +44,12 @@ final class OverlayPanel: NSPanel {
         backdrop.addSubview(chrome)
         backdrop.addSubview(canvas)
         backdrop.addSubview(sizeLabel)
-        backdrop.addSubview(toolbar)
+        backdrop.addSubview(toolStrip)
         contentView = backdrop
         initialFirstResponder = backdrop
 
-        toolbar.isHidden = true
-        toolbar.onCommand = { [weak self] command in
+        toolStrip.isHidden = true
+        toolStrip.onCommand = { [weak self] command in
             self?.onInput?(.command(command))
         }
     }
@@ -118,18 +118,18 @@ final class OverlayPanel: NSPanel {
         }
 
         if showsToolbar, let selection {
-            toolbar.update(style: session.style)
-            toolbar.setFrameOrigin(toolbarOrigin(for: local(selection)))
-            toolbar.isHidden = false
+            toolStrip.update(style: session.style)
+            toolStrip.setFrameOrigin(toolbarOrigin(for: local(selection)))
+            toolStrip.isHidden = false
         } else {
-            toolbar.isHidden = true
+            toolStrip.isHidden = true
         }
     }
 
     /// Below the Selection, right aligned; above it if there is no room; inside its bottom edge otherwise.
     private func toolbarOrigin(for selection: CGRect) -> CGPoint {
         let gap: CGFloat = 8
-        let size = toolbar.frame.size
+        let size = toolStrip.frame.size
         let bounds = backdrop.bounds
         var y = selection.minY - gap - size.height
         if y < bounds.minY {
@@ -146,7 +146,7 @@ final class OverlayPanel: NSPanel {
         switch event.type {
         case .leftMouseDown:
             if !isKeyWindow { makeKey() }
-            mouseDownInToolbar = !toolbar.isHidden && toolbar.frame.contains(event.locationInWindow)
+            mouseDownInToolbar = !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow)
             if mouseDownInToolbar {
                 super.sendEvent(event)
             } else {
