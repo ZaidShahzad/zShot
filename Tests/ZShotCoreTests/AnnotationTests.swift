@@ -38,14 +38,18 @@ private func isClose(_ a: CGPoint, _ b: CGPoint) -> Bool {
     let first = Annotation(shape: .line(from: .zero, to: origin), swatch: .red, thickness: .thin)
     let second = Annotation(shape: .rectangle(CGRect(x: 0, y: 0, width: 5, height: 5)), swatch: .blue, thickness: .thick)
     var history = AnnotationHistory()
-    #expect(history.undo() == false)
+    let undidEmpty = history.undo()
+    #expect(undidEmpty == false)
     history.add(first)
     history.add(second)
-    #expect(history.undo())
+    let undid = history.undo()
+    #expect(undid)
     #expect(history.annotations == [first])
-    #expect(history.redo())
+    let redid = history.redo()
+    #expect(redid)
     #expect(history.annotations == [first, second])
-    #expect(history.redo() == false)
+    let redidPastEnd = history.redo()
+    #expect(redidPastEnd == false)
 }
 
 @Test func addingAfterUndoClearsRedo() {
@@ -55,6 +59,7 @@ private func isClose(_ a: CGPoint, _ b: CGPoint) -> Bool {
     history.add(first)
     history.undo()
     history.add(second)
-    #expect(history.redo() == false)
+    let redid = history.redo()
+    #expect(redid == false)
     #expect(history.annotations == [second])
 }

@@ -95,29 +95,36 @@ private func annotatingSession() -> ScreenshotSession {
         shape: .arrow(from: CGPoint(x: 1100, y: 810), to: CGPoint(x: 1200, y: 840)), swatch: .red, thickness: .medium)
     #expect(session.history.annotations == [arrow])
 
-    #expect(session.handle(.command(.undo)) == nil)
+    let undo = session.handle(.command(.undo))
+    #expect(undo == nil)
     #expect(session.history.annotations.isEmpty)
-    #expect(session.handle(.command(.redo)) == nil)
+    let redo = session.handle(.command(.redo))
+    #expect(redo == nil)
     #expect(session.history.annotations == [arrow])
 }
 
 @Test func undoWithNothingLeftCancels() {
     var session = annotatingSession()
     drag(&session, from: CGPoint(x: 1100, y: 810), to: CGPoint(x: 1200, y: 840))
-    #expect(session.handle(.command(.undo)) == nil)
-    #expect(session.handle(.command(.undo)) == .cancel)
+    let firstUndo = session.handle(.command(.undo))
+    #expect(firstUndo == nil)
+    let secondUndo = session.handle(.command(.undo))
+    #expect(secondUndo == .cancel)
 }
 
 @Test func undoWhileChoosingCancels() {
     var session = makeSession()
-    #expect(session.handle(.command(.undo)) == .cancel)
+    let undo = session.handle(.command(.undo))
+    #expect(undo == .cancel)
 }
 
 @Test func escCancelsFromAnyPhase() {
     var choosing = makeSession()
-    #expect(choosing.handle(.command(.cancel)) == .cancel)
+    let fromChoosing = choosing.handle(.command(.cancel))
+    #expect(fromChoosing == .cancel)
     var annotating = annotatingSession()
-    #expect(annotating.handle(.command(.cancel)) == .cancel)
+    let fromAnnotating = annotating.handle(.command(.cancel))
+    #expect(fromAnnotating == .cancel)
 }
 
 @Test func degenerateAnnotationsAreDropped() {
@@ -180,6 +187,7 @@ private func annotatingSession() -> ScreenshotSession {
 
 @Test func finishDoesNothingBeforeASelection() {
     var session = makeSession()
-    #expect(session.handle(.command(.finish)) == nil)
+    let outcome = session.handle(.command(.finish))
+    #expect(outcome == nil)
     #expect(session.phase == .choosing(hover: nil))
 }
