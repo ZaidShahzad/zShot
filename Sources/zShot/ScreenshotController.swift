@@ -65,10 +65,14 @@ final class ScreenshotController {
         let capturer = self.capturer
         freezeTask = Task { [weak self] in
             let images = await capturer.freezeAll()
-            if let images, let self, self.entry == entry, self.session != nil {
-                for panel in self.panels {
-                    panel.setFrozenImage(images.first(where: { $0.frame == panel.screenFrame })?.image)
-                }
+            guard let self, self.entry == entry, self.session != nil else { return images }
+            guard let images else {
+                self.exitScreenshotMode()
+                ScreenRecordingPermission.showMissingAlert()
+                return nil
+            }
+            for panel in self.panels {
+                panel.setFrozenImage(images.first(where: { $0.frame == panel.screenFrame })?.image)
             }
             return images
         }
