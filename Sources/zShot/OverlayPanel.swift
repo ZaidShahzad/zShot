@@ -243,17 +243,26 @@ private final class ChromeView: NSView {
         OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 10
 
     private let dim = CAShapeLayer()
+    /// While dragging, the hole moves on every mouse event. Moving four solid layers costs nothing,
+    /// unlike re-rasterizing a full-screen shape, so areas are dimmed with these instead of `dim`.
+    private let areaDims: [CALayer] = (0..<4).map { _ in CALayer() }
     private let border = CAShapeLayer()
     private var hole: Hole?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        dim.fillColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        let dimColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        dim.fillColor = dimColor
         dim.fillRule = .evenOdd
         dim.path = CGPath(rect: bounds, transform: nil)
         border.fillColor = nil
         layer?.addSublayer(dim)
+        for areaDim in areaDims {
+            areaDim.backgroundColor = dimColor
+            areaDim.isHidden = true
+            layer?.addSublayer(areaDim)
+        }
         layer?.addSublayer(border)
     }
 
@@ -278,6 +287,7 @@ private final class ChromeView: NSView {
         let dimPath = CGMutablePath()
         dimPath.addRect(bounds)
         var borderPath: CGPath?
+        var area: CGRect?
         switch newHole {
         case .window(let rect):
             let width: CGFloat = 1.5
@@ -287,7 +297,7 @@ private final class ChromeView: NSView {
             border.lineWidth = width
         case .area(let rect):
             let width: CGFloat = 1
-            dimPath.addRect(rect)
+            area = rect
             borderPath = CGPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2), transform: nil)
             border.strokeColor = NSColor.white.cgColor
             border.lineWidth = width
@@ -297,7 +307,15 @@ private final class ChromeView: NSView {
 
         let oldDimPath = dim.presentation()?.path ?? dim.path
         let oldBorderPath = border.presentation()?.path ?? border.path
-        dim.path = dimPath
+        if let area {
+            layOutAreaDims(around: area)
+        } else {
+            dim.path = dimPath
+        }
+        dim.isHidden = area != nil
+        for areaDim in areaDims {
+            areaDim.isHidden = area == nil
+        }
         border.path = borderPath
 
         switch (previous, newHole) {
@@ -316,6 +334,20 @@ private final class ChromeView: NSView {
             dim.removeAllAnimations()
             border.removeAllAnimations()
         }
+    }
+
+    private func layOutAreaDims(around rect: CGRect) {
+        let b = bounds
+        let h = rect.intersection(b)
+        guard !h.isNull else {
+            areaDims[0].frame = b
+            for areaDim in areaDims.dropFirst() { areaDim.frame = .zero }
+            return
+        }
+        areaDims[0].frame = CGRect(x: b.minX, y: h.maxY, width: b.width, height: b.maxY - h.maxY)
+        areaDims[1].frame = CGRect(x: b.minX, y: b.minY, width: b.width, height: h.minY - b.minY)
+        areaDims[2].frame = CGRect(x: b.minX, y: h.minY, width: h.minX - b.minX, height: h.height)
+        areaDims[3].frame = CGRect(x: h.maxX, y: h.minY, width: b.maxX - h.maxX, height: h.height)
     }
 
     /// Keyed by "path", so each new glide replaces the running one and starts from where it is on screen.
