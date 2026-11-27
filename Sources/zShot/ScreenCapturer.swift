@@ -78,7 +78,7 @@ final class ScreenCapturer {
     }
 }
 
-/// Owns Screen Recording permission. Only `handleMissing()` makes macOS prompt, and only once ever.
+/// Owns Screen Recording permission. macOS is asked only from the Capture hotkey, never at launch.
 @MainActor
 enum ScreenRecordingPermission {
     private static let didRequestKey = "didRequestScreenRecording"
@@ -131,6 +131,8 @@ enum ScreenRecordingPermission {
         case .alertFirstButtonReturn:
             relaunch()
         case .alertSecondButtonReturn:
+            // Puts zShot back in the list after a tccutil reset or the minus button removed it.
+            CGRequestScreenCaptureAccess()
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)
             }
