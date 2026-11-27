@@ -20,7 +20,12 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 if security find-identity -p codesigning | grep -F "\"$IDENTITY\"" >/dev/null; then
     codesign --force --sign "$IDENTITY" "$APP"
 else
-    echo "warning: no \"$IDENTITY\" signing identity; signing ad hoc, so Screen Recording permission resets on every build" >&2
+    cat >&2 <<EOF
+warning: no "$IDENTITY" signing identity; signing ad hoc.
+macOS treats each ad-hoc build as a new app, so Screen Recording permission resets on every build.
+After rebuilding, run 'tccutil reset ScreenCapture io.github.zaidshahzad.zshot', quit any running zShot,
+then open the new build and allow it again. To avoid this, run scripts/make-dev-cert.sh once.
+EOF
     codesign --force --sign - "$APP"
 fi
 
