@@ -281,7 +281,7 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered window: rounded like a window, bordered in green, cross-fades to the next window.
+        /// The hovered window: rounded like a window, outlined like macOS's own thin window border, cross-fades to the next window.
         case window(WindowTarget)
         /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
@@ -367,12 +367,13 @@ private final class ChromeView: NSView {
         var area: CGRect?
         switch newHole {
         case .window(let target):
-            let width: CGFloat = 1.5
+            let width: CGFloat = 1
             let rect = target.frame
             let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
             dimPath.addPath(outline)
             borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
-            border.strokeColor = NSColor.systemGreen.cgColor
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            border.strokeColor = (isDark ? NSColor.white.withAlphaComponent(0.3) : NSColor.black.withAlphaComponent(0.25)).cgColor
             border.lineWidth = width
             if !target.covered.isEmpty {
                 let covered = CGMutablePath()
