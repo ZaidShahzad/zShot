@@ -10,7 +10,7 @@ final class OverlayPanel: NSPanel {
     var onInput: (@MainActor (Input) -> Void)?
 
     private let backdrop: BackdropView
-    private let lifted = LiftedView(frame: .zero)
+    private let liftedView = LiftedView(frame: .zero)
     private let chrome: ChromeView
     private let canvas = CanvasView(frame: .zero)
     private let sizeLabel = NSTextField(labelWithString: "")
@@ -42,7 +42,7 @@ final class OverlayPanel: NSPanel {
         sizeLabel.isHidden = true
 
         chrome.autoresizingMask = [.width, .height]
-        backdrop.addSubview(lifted)
+        backdrop.addSubview(liftedView)
         backdrop.addSubview(chrome)
         backdrop.addSubview(canvas)
         backdrop.addSubview(sizeLabel)
@@ -64,22 +64,17 @@ final class OverlayPanel: NSPanel {
     }
 
     /// Shows one window, captured by itself, over the frozen image and under the dim and the Annotations.
-    /// `frame` is in global points and may run past this display.
-    func setLifted(_ image: CGImage?, frame: CGRect?) {
-        guard let image, let frame else {
-            lifted.isHidden = true
-            lifted.image = nil
+    /// Its frame may run past this display.
+    func setLifted(_ lifted: LiftedWindow?) {
+        guard let lifted else {
+            liftedView.hide()
             return
         }
-        lifted.frame = frame.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY)
-        lifted.image = image
-        guard lifted.isHidden else { return }
-        lifted.isHidden = false
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0
-        fade.toValue = 1
-        fade.duration = 0.07
-        lifted.layer?.add(fade, forKey: "opacity")
+        let frame = lifted.image.frame
+        liftedView.show(
+            lifted.image.image,
+            frame: frame.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY),
+            visible: lifted.visible.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) })
     }
 
     func show() {
@@ -251,17 +246,17 @@ private final class BackdropView: NSView {
     }
 }
 
-/// Holds a lifted window's image as layer contents, stretched to the view.
+/// Holds a lifted window's image as layer contents, stretched to the view and masked to its visible part.
 private final class LiftedView: NSView {
-    var image: CGImage? {
-        didSet { needsDisplay = true }
-    }
+    private let imageLayer = CALayer()
+    private let visibleMask = CAShapeLayer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
-        layerContentsPlacement = .scaleAxesIndependently
+        imageLayer.contentsGravity = .resize
+        imageLayer.mask = visibleMask
+        layer?.addSublayer(imageLayer)
         isHidden = true
     }
 
@@ -269,11 +264,36 @@ private final class LiftedView: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    override var wantsUpdateLayer: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func updateLayer() {
-        layer?.contents = image
+    /// `frame` is in the superview's coordinates and `visible` in this view's. Fades in when it was hidden.
+    func show(_ image: CGImage, frame: CGRect, visible: [CGRect]) {
+        self.frame = frame
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.frame = bounds
+        visibleMask.frame = bounds
+        imageLayer.contents = image
+        let path = CGMutablePath()
+        path.addRects(visible)
+        visibleMask.path = path
+        CATransaction.commit()
+
+        guard isHidden else { return }
+        isHidden = false
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.07
+        layer?.add(fade, forKey: "opacity")
+    }
+
+    func hide() {
+        isHidden = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.contents = nil
+        CATransaction.commit()
     }
 }
 

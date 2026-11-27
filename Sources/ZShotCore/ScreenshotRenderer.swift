@@ -17,10 +17,21 @@ public struct RenderedScreenshot: @unchecked Sendable {
     public let scale: CGFloat
 }
 
+/// One window captured by itself, shown over the frozen displays so the windows covering it are hidden.
+/// It shows only inside `visible`, so the menu bar and Dock stay in front of it.
+public struct LiftedWindow: Sendable {
+    public let image: DisplayImage
+    public let visible: [CGRect]
+
+    public init(image: DisplayImage, visible: [CGRect]) {
+        self.image = image
+        self.visible = visible
+    }
+}
+
 public enum ScreenshotRenderer {
-    /// `lifted` is one window captured by itself, drawn over the displays so the windows covering it are hidden.
     public static func render(
-        selection: CGRect, displays: [DisplayImage], lifted: DisplayImage? = nil, annotations: [Annotation]
+        selection: CGRect, displays: [DisplayImage], lifted: LiftedWindow? = nil, annotations: [Annotation]
     ) -> RenderedScreenshot? {
         let visible = displays.filter { $0.frame.intersects(selection) }
         guard let scale = visible.map({ CGFloat($0.image.width) / $0.frame.width }).max(), scale > 0 else { return nil }
@@ -46,7 +57,10 @@ public enum ScreenshotRenderer {
             context.draw(display.image, in: display.frame)
         }
         if let lifted {
-            context.draw(lifted.image, in: lifted.frame)
+            context.saveGState()
+            context.clip(to: lifted.visible)
+            context.draw(lifted.image.image, in: lifted.image.frame)
+            context.restoreGState()
         }
         AnnotationRenderer.draw(annotations, in: context)
 

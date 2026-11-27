@@ -44,6 +44,33 @@ private func appWindow(_ frame: CGRect) -> ScreenWindow {
     #expect(targets.map(\.covered) == [[]])
 }
 
+@Test func screenEdgeStripsCoverTheWindowsBehindThem() throws {
+    // The Dock takes the bottom 70 points and the menu bar the top 25.
+    let edges = WindowRegions.subtract(CGRect(x: 0, y: 70, width: 1440, height: 805), from: display)
+    let windows = edges.map { ScreenWindow(id: 0, frame: $0, isTarget: false) } + [appWindow(back)]
+    let targets = WindowRegions.targets(windows, displays: [display])
+    try #require(targets.count == 1)
+    #expect(targets[0].covered == [CGRect(x: 50, y: 50, width: 800, height: 20)])
+    #expect(targets[0].lifted(under: edges) == nil)
+
+    let session = ScreenshotSession(displays: [display], windows: targets, style: ToolStyle(), mouse: CGPoint(x: 300, y: 60))
+    #expect(session.phase == .choosing(hover: nil))
+}
+
+@Test func liftedWindowIsCoveredOnlyByTheScreenEdges() throws {
+    let dock = CGRect(x: 0, y: 0, width: 1440, height: 70)
+    let windows = [ScreenWindow(id: 0, frame: dock, isTarget: false), appWindow(front), ScreenWindow(id: 2, frame: back, isTarget: true)]
+    let targets = WindowRegions.targets(windows, displays: [display])
+    try #require(targets.count == 2)
+    #expect(targets[0].lifted(under: [dock]) == nil)
+
+    let lifted = try #require(targets[1].lifted(under: [dock]))
+    #expect(lifted.id == 2)
+    #expect(lifted.frame == back)
+    #expect(lifted.covered == [CGRect(x: 50, y: 50, width: 800, height: 20)])
+    #expect(lifted.visible == [CGRect(x: 50, y: 70, width: 800, height: 580)])
+}
+
 @Test func windowsHiddenBehindOthersAreDropped() {
     let targets = WindowRegions.targets([appWindow(back), appWindow(front)], displays: [display])
     #expect(targets.map(\.frame) == [back])

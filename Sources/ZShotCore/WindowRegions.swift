@@ -32,6 +32,13 @@ public struct WindowTarget: Equatable, Sendable {
             visible: visible.map { $0.offsetBy(dx: dx, dy: dy) },
             covered: covered.map { $0.offsetBy(dx: dx, dy: dy) })
     }
+
+    /// The window as it looks once lifted in front of every other window: only `edges`, the menu bar and Dock strips, still cover it.
+    /// nil when no other window covers it, so lifting it would change nothing.
+    public func lifted(under edges: [CGRect]) -> WindowTarget? {
+        guard covered.contains(where: { !WindowRegions.subtract(edges, from: $0).isEmpty }) else { return nil }
+        return WindowRegions.target(id: id, frame: frame, under: edges)
+    }
 }
 
 public enum WindowRegions {
@@ -46,10 +53,9 @@ public enum WindowRegions {
             let frame = window.frame.intersection(bounds)
             guard !frame.isEmpty else { continue }
             if window.isTarget {
-                let visible = occluders.reduce([frame]) { pieces, occluder in pieces.flatMap { subtract(occluder, from: $0) } }
-                if !visible.isEmpty {
-                    let covered = visible.reduce([frame]) { pieces, shown in pieces.flatMap { subtract(shown, from: $0) } }
-                    targets.append(WindowTarget(id: window.id, frame: frame, visible: visible, covered: covered))
+                let candidate = Self.target(id: window.id, frame: frame, under: occluders)
+                if !candidate.visible.isEmpty {
+                    targets.append(candidate)
                 }
             }
             if window.isTarget || !displays.contains(where: { frame.contains($0) }) {
@@ -57,6 +63,16 @@ public enum WindowRegions {
             }
         }
         return targets
+    }
+
+    static func target(id: UInt32, frame: CGRect, under occluders: [CGRect]) -> WindowTarget {
+        let visible = subtract(occluders, from: frame)
+        return WindowTarget(id: id, frame: frame, visible: visible, covered: subtract(visible, from: frame))
+    }
+
+    /// `rect` minus every rect in `cuts`, as disjoint rects.
+    static func subtract(_ cuts: [CGRect], from rect: CGRect) -> [CGRect] {
+        cuts.reduce([rect]) { pieces, cut in pieces.flatMap { subtract(cut, from: $0) } }
     }
 
     /// `rect` minus `cut`, as up to four disjoint rects: full-width bands above and below the cut, and bands left and right of it.

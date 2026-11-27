@@ -75,17 +75,20 @@ private let white = RGBA(r: 255, g: 255, b: 255, a: 255)
     #expect(pixel(rendered.image, x: 50, y: 10) == white)
 }
 
-@Test func liftedWindowCoversWhatIsUnderIt() throws {
+@Test func liftedWindowCoversWhatIsUnderItExceptOutsideItsVisiblePart() throws {
     let display = DisplayImage(frame: CGRect(x: 0, y: 0, width: 100, height: 100), image: solidImage(width: 200, height: 200, r: 255, g: 0, b: 0))
     let window = DisplayImage(frame: CGRect(x: 20, y: 20, width: 50, height: 50), image: solidImage(width: 100, height: 100, r: 0, g: 0, b: 255))
+    // A Dock strip covers the window's bottom 10 points.
+    let lifted = LiftedWindow(image: window, visible: [CGRect(x: 20, y: 30, width: 50, height: 40)])
 
-    let rendered = try #require(ScreenshotRenderer.render(selection: display.frame, displays: [display], lifted: window, annotations: []))
+    let rendered = try #require(ScreenshotRenderer.render(selection: display.frame, displays: [display], lifted: lifted, annotations: []))
 
     #expect(rendered.scale == 2)
-    #expect(pixel(rendered.image, x: 40, y: 159) == blue)
+    #expect(pixel(rendered.image, x: 40, y: 139) == blue)
     #expect(pixel(rendered.image, x: 139, y: 60) == blue)
-    #expect(pixel(rendered.image, x: 39, y: 159) == red)
+    #expect(pixel(rendered.image, x: 39, y: 139) == red)
     #expect(pixel(rendered.image, x: 140, y: 60) == red)
+    #expect(pixel(rendered.image, x: 40, y: 150) == red)
 }
 
 @Test func renderReturnsNilOutsideEveryDisplay() {
