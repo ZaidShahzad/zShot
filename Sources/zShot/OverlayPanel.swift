@@ -233,7 +233,7 @@ private final class BackdropView: NSView {
 /// Dims everything outside the hole and borders it. The dim and the border share one hole path, so they move together.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered window: rounded like a window, bordered in the accent color, glides to the next window.
+        /// The hovered window: rounded like a window, bordered in green, glides to the next window.
         case window(CGRect)
         /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
@@ -293,7 +293,7 @@ private final class ChromeView: NSView {
             let width: CGFloat = 1.5
             dimPath.addPath(Self.roundedRect(rect, radius: Self.windowCornerRadius))
             borderPath = Self.roundedRect(rect.insetBy(dx: -width / 2, dy: -width / 2), radius: Self.windowCornerRadius + width / 2)
-            border.strokeColor = NSColor.controlAccentColor.cgColor
+            border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
         case .area(let rect):
             let width: CGFloat = 1
@@ -328,7 +328,7 @@ private final class ChromeView: NSView {
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
             fade.toValue = 1
-            fade.duration = 0.08
+            fade.duration = 0.04
             border.add(fade, forKey: "opacity")
         default:
             dim.removeAllAnimations()
@@ -354,7 +354,7 @@ private final class ChromeView: NSView {
     private static func glide(_ layer: CAShapeLayer, from path: CGPath?) {
         let animation = CABasicAnimation(keyPath: "path")
         animation.fromValue = path
-        animation.duration = 0.12
+        animation.duration = 0.05
         animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
         layer.add(animation, forKey: "path")
     }
