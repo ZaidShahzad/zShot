@@ -12,8 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        ScreenRecordingPermission.requestIfNeeded()
-
         let controller = ScreenshotController(preferences: preferences, capturer: capturer)
         self.controller = controller
         hotKey = HotKey { [weak controller] time in
@@ -25,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        refreshCapturer()
+    }
+
+    /// Without permission, asking ScreenCaptureKit for content makes macOS prompt, so wait for the hotkey instead.
+    private func refreshCapturer() {
+        guard ScreenRecordingPermission.isGranted else { return }
         let capturer = self.capturer
         Task {
             await capturer.refresh()
@@ -99,9 +103,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screensChanged() {
         controller?.rebuildPanels()
-        let capturer = self.capturer
-        Task {
-            await capturer.refresh()
-        }
+        refreshCapturer()
     }
 }
