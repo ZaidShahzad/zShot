@@ -45,7 +45,8 @@ final class ScreenshotController {
         entry += 1
         let entry = self.entry
         let mouse = NSEvent.mouseLocation
-        session = ScreenshotSession(displays: panels.map { $0.screenFrame }, windows: [], style: preferences.toolStyle, mouse: mouse)
+        let displays = panels.map { $0.screenFrame }
+        session = ScreenshotSession(displays: displays, windows: [], style: preferences.toolStyle, mouse: mouse)
         render()
         for panel in panels {
             panel.show()
@@ -59,7 +60,7 @@ final class ScreenshotController {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         Task { [weak self] in
             let windows = await Task.detached(priority: .userInitiated) {
-                WindowList.snapshot(primaryHeight: primaryHeight)
+                WindowRegions.targets(WindowList.snapshot(primaryHeight: primaryHeight), displays: displays)
             }.value
             guard let self, self.entry == entry, self.session != nil else { return }
             self.session?.setWindows(windows)

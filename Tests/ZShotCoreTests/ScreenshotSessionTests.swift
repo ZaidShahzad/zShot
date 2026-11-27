@@ -7,8 +7,22 @@ private let sideDisplay = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
 private let frontWindow = CGRect(x: 100, y: 100, width: 300, height: 200)
 private let backWindow = CGRect(x: 50, y: 50, width: 800, height: 600)
 
+/// Normal app windows, front to back.
+private func targets(_ frames: [CGRect], displays: [CGRect] = [mainDisplay, sideDisplay]) -> [WindowTarget] {
+    WindowRegions.targets(frames.map { ScreenWindow(frame: $0, isTarget: true) }, displays: displays)
+}
+
 private func makeSession(mouse: CGPoint = CGPoint(x: 10, y: 10)) -> ScreenshotSession {
-    ScreenshotSession(displays: [mainDisplay, sideDisplay], windows: [frontWindow, backWindow], style: ToolStyle(), mouse: mouse)
+    ScreenshotSession(displays: [mainDisplay, sideDisplay], windows: targets([frontWindow, backWindow]), style: ToolStyle(), mouse: mouse)
+}
+
+private func hovered(_ session: ScreenshotSession) -> CGRect? {
+    switch session.phase {
+    case .choosing(let hover), .pressing(_, let hover):
+        return hover?.frame
+    case .selecting, .annotating:
+        return nil
+    }
 }
 
 private func selected(_ session: ScreenshotSession) -> CGRect? {
@@ -43,11 +57,23 @@ private func annotatingSession() -> ScreenshotSession {
 @Test func hoverHighlightsFrontmostWindowUnderMouse() {
     var session = makeSession()
     _ = session.handle(.mouseMoved(CGPoint(x: 150, y: 150)))
-    #expect(session.phase == .choosing(hover: frontWindow))
+    #expect(hovered(session) == frontWindow)
     _ = session.handle(.mouseMoved(CGPoint(x: 600, y: 500)))
-    #expect(session.phase == .choosing(hover: backWindow))
+    #expect(hovered(session) == backWindow)
     _ = session.handle(.mouseMoved(CGPoint(x: 1000, y: 800)))
     #expect(session.phase == .choosing(hover: nil))
+}
+
+@Test func hoverHighlightsOnlyTheVisiblePartOfACoveredWindow() {
+    var session = makeSession()
+    _ = session.handle(.mouseMoved(CGPoint(x: 600, y: 500)))
+    guard case .choosing(let hover?) = session.phase else {
+        Issue.record("Expected a hovered window")
+        return
+    }
+    #expect(hover.frame == backWindow)
+    #expect(hover.visible.allSatisfy { $0.intersection(frontWindow).isEmpty })
+    #expect(!hover.covered.isEmpty && hover.covered.allSatisfy { frontWindow.contains($0) })
 }
 
 @Test func clickSelectsHoveredWindow() {
@@ -56,6 +82,30 @@ private func annotatingSession() -> ScreenshotSession {
     _ = session.handle(.mouseMoved(point))
     drag(&session, from: point, to: point)
     #expect(selected(session) == frontWindow)
+}
+
+@Test func clickSelectsAPartlyCoveredWindowWhole() {
+    var session = makeSession()
+    let point = CGPoint(x: 600, y: 500)
+    drag(&session, from: point, to: point)
+    #expect(selected(session) == backWindow)
+}
+
+@Test func dockCoversTheWindowBehindItAndHoversNothing() {
+    let dock = CGRect(x: 0, y: 0, width: 1440, height: 70)
+    let windows = WindowRegions.targets(
+        [ScreenWindow(frame: dock, isTarget: false), ScreenWindow(frame: backWindow, isTarget: true)], displays: [mainDisplay])
+    var session = ScreenshotSession(displays: [mainDisplay], windows: windows, style: ToolStyle(), mouse: CGPoint(x: 300, y: 60))
+    #expect(session.phase == .choosing(hover: nil))
+    _ = session.handle(.mouseMoved(CGPoint(x: 300, y: 80)))
+    #expect(hovered(session) == backWindow)
+}
+
+@Test func invisibleFullScreenOverlayKeepsWindowsHoverable() {
+    let windows = WindowRegions.targets(
+        [ScreenWindow(frame: mainDisplay, isTarget: false), ScreenWindow(frame: frontWindow, isTarget: true)], displays: [mainDisplay])
+    let session = ScreenshotSession(displays: [mainDisplay], windows: windows, style: ToolStyle(), mouse: CGPoint(x: 150, y: 150))
+    #expect(hovered(session) == frontWindow)
 }
 
 @Test func dragUnderThresholdCountsAsClick() {
@@ -78,8 +128,8 @@ private func annotatingSession() -> ScreenshotSession {
 
 @Test func windowsArrivingLaterAreClippedAndHovered() {
     var session = ScreenshotSession(displays: [mainDisplay], windows: [], style: ToolStyle(), mouse: CGPoint(x: 20, y: 20))
-    session.setWindows([CGRect(x: -100, y: -100, width: 200, height: 200)])
-    #expect(session.phase == .choosing(hover: CGRect(x: 0, y: 0, width: 100, height: 100)))
+    session.setWindows(targets([CGRect(x: -100, y: -100, width: 200, height: 200)], displays: [mainDisplay]))
+    #expect(hovered(session) == CGRect(x: 0, y: 0, width: 100, height: 100))
 }
 
 @Test func fullDisplaySelectsDisplayUnderMouse() {

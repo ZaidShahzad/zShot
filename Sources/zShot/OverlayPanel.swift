@@ -75,7 +75,7 @@ final class OverlayPanel: NSPanel {
         var selectingSize: CGSize?
         switch session.phase {
         case .choosing(let hover), .pressing(_, let hover):
-            if let hover { hole = .window(local(hover)) }
+            if let hover { hole = .window(hover.offsetBy(dx: -origin.x, dy: -origin.y)) }
         case .selecting(let anchor, let current):
             let rect = Geometry.rect(from: anchor, to: current)
             hole = .area(local(rect))
@@ -231,10 +231,11 @@ private final class BackdropView: NSView {
 }
 
 /// Dims everything outside the hole and borders it. The dim and the border share one hole path, so they move together.
+/// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
         /// The hovered window: rounded like a window, bordered in green, cross-fades to the next window.
-        case window(CGRect)
+        case window(WindowTarget)
         /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
     }
@@ -246,7 +247,13 @@ private final class ChromeView: NSView {
     /// While dragging, the hole moves on every mouse event. Moving four solid layers costs nothing,
     /// unlike re-rasterizing a full-screen shape, so areas are dimmed with these instead of `dim`.
     private let areaDims: [CALayer] = (0..<4).map { _ in CALayer() }
+    /// Dims the covered parts of a window hole. They are rects, so `coveredMask` trims them to the rounded outline;
+    /// adding them to `dim`'s even-odd path instead would brighten the window's rounded corners.
+    private let coveredDim = CAShapeLayer()
+    private let coveredMask = CAShapeLayer()
     private let border = CAShapeLayer()
+    /// Keeps a window's border to its visible parts.
+    private let borderMask = CAShapeLayer()
     private var hole: Hole?
 
     override init(frame: NSRect) {
@@ -256,13 +263,16 @@ private final class ChromeView: NSView {
         dim.fillColor = dimColor
         dim.fillRule = .evenOdd
         dim.path = CGPath(rect: bounds, transform: nil)
+        coveredDim.fillColor = dimColor
         border.fillColor = nil
+        layOutShapes()
         layer?.addSublayer(dim)
         for areaDim in areaDims {
             areaDim.backgroundColor = dimColor
             areaDim.isHidden = true
             layer?.addSublayer(areaDim)
         }
+        layer?.addSublayer(coveredDim)
         layer?.addSublayer(border)
     }
 
@@ -272,11 +282,29 @@ private final class ChromeView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layOutShapes()
+        CATransaction.commit()
+    }
+
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         let scale = window?.backingScaleFactor ?? 1
-        dim.contentsScale = scale
-        border.contentsScale = scale
+        for shape in shapes {
+            shape.contentsScale = scale
+        }
+    }
+
+    /// Every path and mask is in the view's coordinates, so each shape layer fills the view.
+    private var shapes: [CAShapeLayer] { [dim, coveredDim, coveredMask, border, borderMask] }
+
+    private func layOutShapes() {
+        for shape in shapes {
+            shape.frame = bounds
+        }
     }
 
     func update(hole newHole: Hole?) {
@@ -288,14 +316,26 @@ private final class ChromeView: NSView {
         dimPath.addRect(bounds)
         // Borders sit inside the hole. Outside it, a hole touching a display edge would draw a line on the next display.
         var borderPath: CGPath?
+        var coveredPath: CGPath?
         var area: CGRect?
         switch newHole {
-        case .window(let rect):
+        case .window(let target):
             let width: CGFloat = 1.5
-            dimPath.addPath(Self.roundedRect(rect, radius: Self.windowCornerRadius))
+            let rect = target.frame
+            let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
+            dimPath.addPath(outline)
             borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
+            if !target.covered.isEmpty {
+                let covered = CGMutablePath()
+                covered.addRects(target.covered)
+                coveredPath = covered
+                coveredMask.path = outline
+                let visible = CGMutablePath()
+                visible.addRects(target.visible)
+                borderMask.path = visible
+            }
         case .area(let rect):
             let width: CGFloat = 1
             area = rect
@@ -315,14 +355,20 @@ private final class ChromeView: NSView {
         for areaDim in areaDims {
             areaDim.isHidden = area == nil
         }
+        // Masks only while part of the window is covered, so the usual unobstructed window costs no masking pass.
+        coveredDim.path = coveredPath
+        coveredDim.mask = coveredPath == nil ? nil : coveredMask
+        border.mask = coveredPath == nil ? nil : borderMask
         border.path = borderPath
 
         switch (previous, newHole) {
         case (.some(.window(_)), .some(.window(_))):
             Self.crossFade(dim)
+            Self.crossFade(coveredDim)
             Self.crossFade(border)
         case (_, .some(.window(_))):
             dim.removeAllAnimations()
+            coveredDim.removeAllAnimations()
             border.removeAllAnimations()
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
@@ -331,6 +377,7 @@ private final class ChromeView: NSView {
             border.add(fade, forKey: "opacity")
         default:
             dim.removeAllAnimations()
+            coveredDim.removeAllAnimations()
             border.removeAllAnimations()
         }
     }

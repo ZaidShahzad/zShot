@@ -1,26 +1,29 @@
 import CoreGraphics
 import Foundation
+import ZShotCore
 
 enum WindowList {
     private static let minimumSide: CGFloat = 40
 
-    /// Normal app windows other than zShot's, front to back, in global AppKit points.
+    /// On-screen windows other than zShot's, front to back, in global AppKit points. Normal app windows are targets.
+    /// The Dock, the menu bar, and other windows above them are not, but still cover what is behind them.
     /// `primaryHeight` is the primary display's height, needed because Quartz window bounds are top-left based.
-    static func snapshot(primaryHeight: CGFloat) -> [CGRect] {
+    static func snapshot(primaryHeight: CGFloat) -> [ScreenWindow] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
         let ownPID = Int(getpid())
-        var rects: [CGRect] = []
+        var windows: [ScreenWindow] = []
         for window in info {
-            guard (window[kCGWindowLayer as String] as? Int) == 0,
+            guard let layer = window[kCGWindowLayer as String] as? Int, layer >= 0,
                   (window[kCGWindowOwnerPID as String] as? Int) != ownPID,
                   (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
                   let boundsInfo = window[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary),
-                  bounds.width >= minimumSide, bounds.height >= minimumSide
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary)
             else { continue }
-            rects.append(CGRect(x: bounds.minX, y: primaryHeight - bounds.minY - bounds.height, width: bounds.width, height: bounds.height))
+            let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.minY - bounds.height, width: bounds.width, height: bounds.height)
+            let isTarget = layer == 0 && bounds.width >= minimumSide && bounds.height >= minimumSide
+            windows.append(ScreenWindow(frame: frame, isTarget: isTarget))
         }
-        return rects
+        return windows
     }
 }

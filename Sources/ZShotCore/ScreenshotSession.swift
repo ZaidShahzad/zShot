@@ -2,9 +2,9 @@ import CoreGraphics
 
 public enum Phase: Equatable, Sendable {
     /// Crosshair; `hover` is the window under the mouse.
-    case choosing(hover: CGRect?)
+    case choosing(hover: WindowTarget?)
     /// Mouse is down but has not moved past the drag threshold yet.
-    case pressing(origin: CGPoint, hover: CGRect?)
+    case pressing(origin: CGPoint, hover: WindowTarget?)
     case selecting(anchor: CGPoint, current: CGPoint)
     case annotating(selection: CGRect, draft: Draft?)
 }
@@ -35,15 +35,15 @@ public struct ScreenshotSession: Sendable {
     public static let dragThreshold: CGFloat = 4
 
     public let displays: [CGRect]
-    /// Front to back, clipped to the displays.
-    public private(set) var windows: [CGRect] = []
+    /// Front to back.
+    public private(set) var windows: [WindowTarget] = []
     public private(set) var phase: Phase = .choosing(hover: nil)
     public var style: ToolStyle
     public private(set) var history = AnnotationHistory()
     public private(set) var mouse: CGPoint
     public private(set) var shiftDown = false
 
-    public init(displays: [CGRect], windows: [CGRect], style: ToolStyle, mouse: CGPoint) {
+    public init(displays: [CGRect], windows: [WindowTarget], style: ToolStyle, mouse: CGPoint) {
         self.displays = displays
         self.style = style
         self.mouse = mouse
@@ -56,9 +56,8 @@ public struct ScreenshotSession: Sendable {
         return history.annotations + [draft.annotation(constrained: shiftDown)]
     }
 
-    public mutating func setWindows(_ windows: [CGRect]) {
-        let bounds = displays.reduce(CGRect.null) { $0.union($1) }
-        self.windows = windows.map { $0.intersection(bounds) }.filter { !$0.isEmpty }
+    public mutating func setWindows(_ windows: [WindowTarget]) {
+        self.windows = windows
         if case .choosing = phase {
             phase = .choosing(hover: window(at: mouse))
         }
@@ -119,7 +118,7 @@ public struct ScreenshotSession: Sendable {
         switch phase {
         case .pressing(_, let hover):
             if let hover {
-                phase = .annotating(selection: hover, draft: nil)
+                phase = .annotating(selection: hover.frame, draft: nil)
             } else {
                 phase = .choosing(hover: nil)
             }
@@ -173,7 +172,8 @@ public struct ScreenshotSession: Sendable {
         }
     }
 
-    private func window(at point: CGPoint) -> CGRect? {
-        windows.first { $0.contains(point) }
+    /// Only the visible part counts, so a point over the Dock or a window in front never hovers the window behind it.
+    private func window(at point: CGPoint) -> WindowTarget? {
+        windows.first { window in window.visible.contains { $0.contains(point) } }
     }
 }
