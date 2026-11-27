@@ -286,19 +286,20 @@ private final class ChromeView: NSView {
 
         let dimPath = CGMutablePath()
         dimPath.addRect(bounds)
+        // Borders sit inside the hole. Outside it, a hole touching a display edge would draw a line on the next display.
         var borderPath: CGPath?
         var area: CGRect?
         switch newHole {
         case .window(let rect):
             let width: CGFloat = 1.5
             dimPath.addPath(Self.roundedRect(rect, radius: Self.windowCornerRadius))
-            borderPath = Self.roundedRect(rect.insetBy(dx: -width / 2, dy: -width / 2), radius: Self.windowCornerRadius + width / 2)
+            borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
         case .area(let rect):
             let width: CGFloat = 1
             area = rect
-            borderPath = CGPath(rect: rect.insetBy(dx: -width / 2, dy: -width / 2), transform: nil)
+            borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
             border.strokeColor = NSColor.white.cgColor
             border.lineWidth = width
         case nil:
