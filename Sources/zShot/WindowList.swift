@@ -17,7 +17,7 @@ enum WindowList {
             guard let layer = window[kCGWindowLayer as String] as? Int, layer >= 0,
                   (window[kCGWindowOwnerPID as String] as? Int) != ownPID,
                   (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
-                  let id = window[kCGWindowNumber as String] as? UInt32,
+                  let id = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
                   let boundsInfo = window[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary)
             else { continue }
