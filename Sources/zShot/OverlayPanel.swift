@@ -10,6 +10,7 @@ final class OverlayPanel: NSPanel {
     var onInput: (@MainActor (Input) -> Void)?
 
     private let backdrop: BackdropView
+    private let lifted = LiftedView(frame: .zero)
     private let chrome: ChromeView
     private let canvas = CanvasView(frame: .zero)
     private let sizeLabel = NSTextField(labelWithString: "")
@@ -41,6 +42,7 @@ final class OverlayPanel: NSPanel {
         sizeLabel.isHidden = true
 
         chrome.autoresizingMask = [.width, .height]
+        backdrop.addSubview(lifted)
         backdrop.addSubview(chrome)
         backdrop.addSubview(canvas)
         backdrop.addSubview(sizeLabel)
@@ -59,6 +61,25 @@ final class OverlayPanel: NSPanel {
 
     func setFrozenImage(_ image: CGImage?) {
         backdrop.image = image
+    }
+
+    /// Shows one window, captured by itself, over the frozen image and under the dim and the Annotations.
+    /// `frame` is in global points and may run past this display.
+    func setLifted(_ image: CGImage?, frame: CGRect?) {
+        guard let image, let frame else {
+            lifted.isHidden = true
+            lifted.image = nil
+            return
+        }
+        lifted.frame = frame.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY)
+        lifted.image = image
+        guard lifted.isHidden else { return }
+        lifted.isHidden = false
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.07
+        lifted.layer?.add(fade, forKey: "opacity")
     }
 
     func show() {
@@ -227,6 +248,32 @@ private final class BackdropView: NSView {
 
     override func cursorUpdate(with event: NSEvent) {
         NSCursor.crosshair.set()
+    }
+}
+
+/// Holds a lifted window's image as layer contents, stretched to the view.
+private final class LiftedView: NSView {
+    var image: CGImage? {
+        didSet { needsDisplay = true }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layerContentsPlacement = .scaleAxesIndependently
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateLayer() {
+        layer?.contents = image
     }
 }
 

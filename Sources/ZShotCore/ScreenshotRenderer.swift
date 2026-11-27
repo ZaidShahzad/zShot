@@ -18,7 +18,10 @@ public struct RenderedScreenshot: @unchecked Sendable {
 }
 
 public enum ScreenshotRenderer {
-    public static func render(selection: CGRect, displays: [DisplayImage], annotations: [Annotation]) -> RenderedScreenshot? {
+    /// `lifted` is one window captured by itself, drawn over the displays so the windows covering it are hidden.
+    public static func render(
+        selection: CGRect, displays: [DisplayImage], lifted: DisplayImage? = nil, annotations: [Annotation]
+    ) -> RenderedScreenshot? {
         let visible = displays.filter { $0.frame.intersects(selection) }
         guard let scale = visible.map({ CGFloat($0.image.width) / $0.frame.width }).max(), scale > 0 else { return nil }
 
@@ -41,6 +44,9 @@ public enum ScreenshotRenderer {
         context.interpolationQuality = .none
         for display in visible {
             context.draw(display.image, in: display.frame)
+        }
+        if let lifted {
+            context.draw(lifted.image, in: lifted.frame)
         }
         AnnotationRenderer.draw(annotations, in: context)
 

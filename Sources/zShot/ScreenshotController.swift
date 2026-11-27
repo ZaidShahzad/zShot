@@ -10,6 +10,8 @@ final class ScreenshotController {
     private var panels: [OverlayPanel] = []
     private var session: ScreenshotSession?
     private var freezeTask: Task<[DisplayImage]?, Never>?
+    /// The partly covered window a click chose, captured by itself so it shows whole. The task yields nil on failure.
+    private var lift: (window: WindowTarget, task: Task<DisplayImage?, Never>)?
     /// Counts entries into Screenshot mode, so late results from an earlier one are ignored.
     private var entry = 0
 
@@ -92,6 +94,7 @@ final class ScreenshotController {
         switch outcome {
         case nil:
             render()
+            updateLift()
         case .cancel?:
             exitScreenshotMode()
         case .finish(let selection, let annotations)?:
@@ -114,10 +117,46 @@ final class ScreenshotController {
         return panels.first(where: { $0.screenFrame.contains(corner) }) ?? panels.first
     }
 
+    /// Starts lifting the chosen window when it is partly covered, and drops the lift when the Selection moves off it.
+    /// Never blocks input: the capture runs on its own and the panels show it when it lands.
+    private func updateLift() {
+        let chosen = session?.selectedWindow
+        let window = chosen?.covered.isEmpty == false ? chosen : nil
+        guard window != lift?.window else { return }
+        dropLift()
+        guard let window else { return }
+
+        let entry = self.entry
+        let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.main
+        let scale = screen?.backingScaleFactor ?? 2
+        let capturer = self.capturer
+        let task = Task { [weak self] () -> DisplayImage? in
+            let lifted = await capturer.captureWindow(id: window.id, scale: scale)
+            guard let self, let lifted, !Task.isCancelled, self.entry == entry, self.session != nil,
+                  self.lift?.window == window
+            else { return lifted }
+            for panel in self.panels {
+                panel.setLifted(lifted.image, frame: lifted.frame)
+            }
+            return lifted
+        }
+        lift = (window, task)
+    }
+
+    private func dropLift() {
+        lift?.task.cancel()
+        lift = nil
+        for panel in panels {
+            panel.setLifted(nil, frame: nil)
+        }
+    }
+
     private func exitScreenshotMode() {
         session = nil
         freezeTask?.cancel()
         freezeTask = nil
+        dropLift()
         hidePanels()
     }
 
@@ -125,6 +164,7 @@ final class ScreenshotController {
         for panel in panels {
             panel.orderOut(nil)
             panel.setFrozenImage(nil)
+            panel.setLifted(nil, frame: nil)
         }
     }
 
@@ -132,8 +172,10 @@ final class ScreenshotController {
         let start = ProcessInfo.processInfo.systemUptime
         let screen = session.flatMap { toolbarPanel(for: $0) }?.displayScreen ?? NSScreen.main
         let freeze = freezeTask
+        let liftTask = lift?.task
         session = nil
         freezeTask = nil
+        lift = nil
         hidePanels()
 
         let copy = preferences.copyToClipboard
@@ -145,8 +187,10 @@ final class ScreenshotController {
                 ScreenRecordingPermission.captureFailed()
                 return
             }
+            // Usually landed already, about 50 ms after the click. A failed lift renders without it.
+            let lifted: DisplayImage? = await liftTask?.value ?? nil
             let rendered = await Task.detached(priority: .userInitiated) {
-                ScreenshotRenderer.render(selection: selection, displays: images, annotations: annotations)
+                ScreenshotRenderer.render(selection: selection, displays: images, lifted: lifted, annotations: annotations)
             }.value
             guard let rendered else {
                 Log.app.error("Rendering the Screenshot failed")

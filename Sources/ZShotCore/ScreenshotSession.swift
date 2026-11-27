@@ -38,6 +38,8 @@ public struct ScreenshotSession: Sendable {
     /// Front to back.
     public private(set) var windows: [WindowTarget] = []
     public private(set) var phase: Phase = .choosing(hover: nil)
+    /// The window a click chose, while it is still the Selection.
+    public private(set) var selectedWindow: WindowTarget?
     public var style: ToolStyle
     public private(set) var history = AnnotationHistory()
     public private(set) var mouse: CGPoint
@@ -117,12 +119,14 @@ public struct ScreenshotSession: Sendable {
     private mutating func mouseUp(at point: CGPoint) {
         switch phase {
         case .pressing(_, let hover):
+            selectedWindow = hover
             if let hover {
                 phase = .annotating(selection: hover.frame, draft: nil)
             } else {
                 phase = .choosing(hover: nil)
             }
         case .selecting(let anchor, _):
+            selectedWindow = nil
             let selection = Geometry.rect(from: anchor, to: point)
             if selection.width >= 1 && selection.height >= 1 {
                 phase = .annotating(selection: selection, draft: nil)
@@ -153,6 +157,7 @@ public struct ScreenshotSession: Sendable {
             return .finish(selection: selection, annotations: history.annotations)
         case .fullDisplay:
             if let display = displays.first(where: { $0.contains(mouse) }) {
+                selectedWindow = nil
                 phase = .annotating(selection: display, draft: nil)
             }
         case .selectTool(let tool):

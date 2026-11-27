@@ -76,6 +76,35 @@ final class ScreenCapturer {
             return nil
         }
     }
+
+    /// Window `id` by itself, with nothing in front of it, framed in global AppKit points.
+    /// The frame is the whole window, even where it runs off the displays. nil on any failure.
+    func captureWindow(id: UInt32, scale: CGFloat) async -> DisplayImage? {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            guard let window = content.windows.first(where: { $0.windowID == id }) else {
+                Log.app.error("Window \(id, privacy: .public) is no longer on screen")
+                return nil
+            }
+            // SCWindow frames are Quartz global rects, top-left based like window bounds.
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            let bounds = window.frame
+            let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
+
+            let configuration = SCStreamConfiguration()
+            configuration.width = Int((frame.width * scale).rounded())
+            configuration.height = Int((frame.height * scale).rounded())
+            configuration.showsCursor = false
+            configuration.ignoreShadowsSingleWindow = true
+            configuration.captureResolution = .best
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+            return DisplayImage(frame: frame, image: image)
+        } catch {
+            Log.app.error("Window capture failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
 }
 
 /// Owns Screen Recording permission. macOS is asked only from the Capture hotkey, never at launch.

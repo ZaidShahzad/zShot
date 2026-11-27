@@ -2,11 +2,14 @@ import CoreGraphics
 
 /// A window on screen, in global AppKit points.
 public struct ScreenWindow: Equatable, Sendable {
+    /// The CGWindowID.
+    public let id: UInt32
     public let frame: CGRect
     /// Whether hovering it can choose it. Windows that are not targets, like the Dock and the menu bar, only cover others.
     public let isTarget: Bool
 
-    public init(frame: CGRect, isTarget: Bool) {
+    public init(id: UInt32, frame: CGRect, isTarget: Bool) {
+        self.id = id
         self.frame = frame
         self.isTarget = isTarget
     }
@@ -14,6 +17,8 @@ public struct ScreenWindow: Equatable, Sendable {
 
 /// A window the user can choose, split into the part they can see and the part other windows cover.
 public struct WindowTarget: Equatable, Sendable {
+    /// The CGWindowID.
+    public let id: UInt32
     /// Clipped to the displays.
     public let frame: CGRect
     /// `visible` and `covered` are disjoint and together tile `frame`.
@@ -22,6 +27,7 @@ public struct WindowTarget: Equatable, Sendable {
 
     public func offsetBy(dx: CGFloat, dy: CGFloat) -> WindowTarget {
         WindowTarget(
+            id: id,
             frame: frame.offsetBy(dx: dx, dy: dy),
             visible: visible.map { $0.offsetBy(dx: dx, dy: dy) },
             covered: covered.map { $0.offsetBy(dx: dx, dy: dy) })
@@ -43,7 +49,7 @@ public enum WindowRegions {
                 let visible = occluders.reduce([frame]) { pieces, occluder in pieces.flatMap { subtract(occluder, from: $0) } }
                 if !visible.isEmpty {
                     let covered = visible.reduce([frame]) { pieces, shown in pieces.flatMap { subtract(shown, from: $0) } }
-                    targets.append(WindowTarget(frame: frame, visible: visible, covered: covered))
+                    targets.append(WindowTarget(id: window.id, frame: frame, visible: visible, covered: covered))
                 }
             }
             if window.isTarget || !displays.contains(where: { frame.contains($0) }) {

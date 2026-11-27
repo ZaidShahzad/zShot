@@ -9,7 +9,8 @@ private let backWindow = CGRect(x: 50, y: 50, width: 800, height: 600)
 
 /// Normal app windows, front to back.
 private func targets(_ frames: [CGRect], displays: [CGRect] = [mainDisplay, sideDisplay]) -> [WindowTarget] {
-    WindowRegions.targets(frames.map { ScreenWindow(frame: $0, isTarget: true) }, displays: displays)
+    let windows = frames.enumerated().map { ScreenWindow(id: UInt32($0.offset + 1), frame: $0.element, isTarget: true) }
+    return WindowRegions.targets(windows, displays: displays)
 }
 
 private func makeSession(mouse: CGPoint = CGPoint(x: 10, y: 10)) -> ScreenshotSession {
@@ -91,10 +92,36 @@ private func annotatingSession() -> ScreenshotSession {
     #expect(selected(session) == backWindow)
 }
 
+@Test func clickRemembersTheChosenWindowWithItsCoveredPart() {
+    var session = makeSession()
+    let point = CGPoint(x: 600, y: 500)
+    drag(&session, from: point, to: point)
+    #expect(session.selectedWindow?.frame == backWindow)
+    #expect(session.selectedWindow?.id == 2)
+    #expect(session.selectedWindow?.covered.isEmpty == false)
+    drag(&session, from: CGPoint(x: 100, y: 100), to: CGPoint(x: 200, y: 200))
+    #expect(session.selectedWindow?.frame == backWindow)
+}
+
+@Test func fullDisplayForgetsTheChosenWindow() {
+    var session = makeSession()
+    let point = CGPoint(x: 600, y: 500)
+    drag(&session, from: point, to: point)
+    _ = session.handle(.command(.fullDisplay))
+    #expect(selected(session) == mainDisplay)
+    #expect(session.selectedWindow == nil)
+}
+
+@Test func draggedAreaHasNoChosenWindow() {
+    var session = makeSession()
+    drag(&session, from: CGPoint(x: 150, y: 150), to: CGPoint(x: 160, y: 160))
+    #expect(session.selectedWindow == nil)
+}
+
 @Test func dockCoversTheWindowBehindItAndHoversNothing() {
     let dock = CGRect(x: 0, y: 0, width: 1440, height: 70)
     let windows = WindowRegions.targets(
-        [ScreenWindow(frame: dock, isTarget: false), ScreenWindow(frame: backWindow, isTarget: true)], displays: [mainDisplay])
+        [ScreenWindow(id: 1, frame: dock, isTarget: false), ScreenWindow(id: 2, frame: backWindow, isTarget: true)], displays: [mainDisplay])
     var session = ScreenshotSession(displays: [mainDisplay], windows: windows, style: ToolStyle(), mouse: CGPoint(x: 300, y: 60))
     #expect(session.phase == .choosing(hover: nil))
     _ = session.handle(.mouseMoved(CGPoint(x: 300, y: 80)))
@@ -103,7 +130,7 @@ private func annotatingSession() -> ScreenshotSession {
 
 @Test func invisibleFullScreenOverlayKeepsWindowsHoverable() {
     let windows = WindowRegions.targets(
-        [ScreenWindow(frame: mainDisplay, isTarget: false), ScreenWindow(frame: frontWindow, isTarget: true)], displays: [mainDisplay])
+        [ScreenWindow(id: 1, frame: mainDisplay, isTarget: false), ScreenWindow(id: 2, frame: frontWindow, isTarget: true)], displays: [mainDisplay])
     let session = ScreenshotSession(displays: [mainDisplay], windows: windows, style: ToolStyle(), mouse: CGPoint(x: 150, y: 150))
     #expect(hovered(session) == frontWindow)
 }

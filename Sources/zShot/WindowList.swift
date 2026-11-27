@@ -17,12 +17,13 @@ enum WindowList {
             guard let layer = window[kCGWindowLayer as String] as? Int, layer >= 0,
                   (window[kCGWindowOwnerPID as String] as? Int) != ownPID,
                   (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                  let id = window[kCGWindowNumber as String] as? UInt32,
                   let boundsInfo = window[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsInfo as CFDictionary)
             else { continue }
             let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.minY - bounds.height, width: bounds.width, height: bounds.height)
             let isTarget = layer == 0 && bounds.width >= minimumSide && bounds.height >= minimumSide
-            windows.append(ScreenWindow(frame: frame, isTarget: isTarget))
+            windows.append(ScreenWindow(id: id, frame: frame, isTarget: isTarget))
         }
         return windows
     }

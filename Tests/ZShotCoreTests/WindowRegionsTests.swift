@@ -11,7 +11,7 @@ private func area(_ rects: [CGRect]) -> CGFloat {
 }
 
 private func appWindow(_ frame: CGRect) -> ScreenWindow {
-    ScreenWindow(frame: frame, isTarget: true)
+    ScreenWindow(id: 1, frame: frame, isTarget: true)
 }
 
 @Test func backWindowIsCoveredExactlyWhereTheFrontWindowIs() throws {
@@ -31,7 +31,7 @@ private func appWindow(_ frame: CGRect) -> ScreenWindow {
 
 @Test func nonTargetWindowsCoverWindowsWithoutBeingTargets() throws {
     let dock = CGRect(x: 0, y: 0, width: 1440, height: 70)
-    let targets = WindowRegions.targets([ScreenWindow(frame: dock, isTarget: false), appWindow(back)], displays: [display])
+    let targets = WindowRegions.targets([ScreenWindow(id: 2, frame: dock, isTarget: false), appWindow(back)], displays: [display])
     try #require(targets.count == 1)
     #expect(targets[0].frame == back)
     #expect(targets[0].visible.allSatisfy { $0.intersection(dock).isEmpty })
@@ -39,7 +39,7 @@ private func appWindow(_ frame: CGRect) -> ScreenWindow {
 }
 
 @Test func nonTargetWindowSpanningADisplayCoversNothing() {
-    let targets = WindowRegions.targets([ScreenWindow(frame: display, isTarget: false), appWindow(front)], displays: [display])
+    let targets = WindowRegions.targets([ScreenWindow(id: 2, frame: display, isTarget: false), appWindow(front)], displays: [display])
     #expect(targets.map(\.frame) == [front])
     #expect(targets.map(\.covered) == [[]])
 }
