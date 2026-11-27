@@ -82,7 +82,8 @@ final class OverlayPanel: NSPanel {
         _ = makeFirstResponder(backdrop)
     }
 
-    func render(_ session: ScreenshotSession, showsToolbar: Bool) {
+    /// `selectedWindow` is the window the Selection came from, outlined like a hovered window. Areas and displays get a square.
+    func render(_ session: ScreenshotSession, selectedWindow: WindowTarget?, showsToolbar: Bool) {
         let origin = screenFrame.origin
         func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
 
@@ -97,7 +98,11 @@ final class OverlayPanel: NSPanel {
             hole = .area(local(rect))
             selectingSize = rect.size
         case .annotating(let rect, _):
-            hole = .area(local(rect))
+            if let selectedWindow {
+                hole = .window(selectedWindow.offsetBy(dx: -origin.x, dy: -origin.y))
+            } else {
+                hole = .area(local(rect))
+            }
             selection = rect
         }
 
@@ -301,9 +306,9 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered window: rounded like a window, outlined like macOS's own thin window border, cross-fades to the next window.
+        /// The hovered or selected window: rounded like a window, outlined like macOS's own thin window border, cross-fades to the next window.
         case window(WindowTarget)
-        /// An area being dragged out, or the Selection: square, bordered in white, follows the mouse exactly.
+        /// An area being dragged out, or a dragged or full-display Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
     }
 

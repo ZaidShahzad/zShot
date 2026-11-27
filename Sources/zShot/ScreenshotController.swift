@@ -12,9 +12,17 @@ final class ScreenshotController {
     private var freezeTask: Task<[DisplayImage]?, Never>?
     /// The menu bar and Dock strips of every display, in front of every window.
     private var screenEdges: [CGRect] = []
-    /// The window a click chose while other windows cover part of it, as it looks once lifted in front of them,
-    /// and its capture by itself. The task yields nil on failure.
-    private var lift: (target: WindowTarget, task: Task<LiftedWindow?, Never>)?
+    private var lift: Lift?
+
+    /// The window a click chose while other windows cover part of it, captured by itself.
+    private struct Lift {
+        /// The window as it looks once lifted in front of the windows covering it.
+        let target: WindowTarget
+        /// Yields nil on failure.
+        let task: Task<LiftedWindow?, Never>
+        /// Whether the panels show the capture yet.
+        var isShown = false
+    }
     /// Counts entries into Screenshot mode, so late results from an earlier one are ignored.
     private var entry = 0
 
@@ -100,8 +108,8 @@ final class ScreenshotController {
         }
         switch outcome {
         case nil:
-            render()
             updateLift()
+            render()
         case .cancel?:
             exitScreenshotMode()
         case .finish(let selection, let annotations)?:
@@ -112,8 +120,10 @@ final class ScreenshotController {
     private func render() {
         guard let session else { return }
         let host = toolbarPanel(for: session)
+        // Outlined as the click found it until the lifted capture shows, then as lifted.
+        let selectedWindow = lift?.isShown == true ? lift?.target : session.selectedWindow
         for panel in panels {
-            panel.render(session, showsToolbar: panel === host)
+            panel.render(session, selectedWindow: selectedWindow, showsToolbar: panel === host)
         }
     }
 
@@ -146,9 +156,11 @@ final class ScreenshotController {
             for panel in self.panels {
                 panel.setLifted(lifted)
             }
+            self.lift?.isShown = true
+            self.render()
             return lifted
         }
-        lift = (target, task)
+        lift = Lift(target: target, task: task)
     }
 
     private func dropLift() {
