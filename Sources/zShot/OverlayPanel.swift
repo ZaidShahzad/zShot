@@ -42,7 +42,7 @@ final class OverlayPanel: NSPanel {
         sizeLabel.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.72).cgColor
         sizeLabel.layer?.cornerRadius = 6
         sizeLabel.layer?.borderWidth = 1
-        sizeLabel.layer?.borderColor = ScreenshotCursor.green.withAlphaComponent(0.55).cgColor
+        sizeLabel.layer?.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
         sizeLabel.isHidden = true
 
         chrome.autoresizingMask = [.width, .height]
@@ -566,41 +566,18 @@ private final class CanvasView: NSView {
     }
 }
 
-/// Screenshot mode's pointer: zShot's green take on the crosshair macOS shows for Cmd+Shift+4.
+/// Screenshot mode's pointer: the exact crosshair macOS's own screenshot tool shows. It ships inside HIServices;
+/// if a future macOS moves it, zShot falls back to the standard crosshair.
 @MainActor
 enum ScreenshotCursor {
-    static let green = NSColor(srgbRed: 0.20, green: 0.84, blue: 0.42, alpha: 1)
-    /// A crisp green crosshair the size of macOS's own screenshot pointer (31 pt, hot spot in the middle).
-    static let shared: NSCursor = {
-        let side: CGFloat = 31
-        let greenColor = green.cgColor
-        let halo = NSColor.black.withAlphaComponent(0.55).cgColor
-        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            let mid = rect.midX
-            let gap: CGFloat = 3.5
-            let arms: [(CGPoint, CGPoint)] = [
-                (CGPoint(x: mid, y: rect.minY + 1), CGPoint(x: mid, y: mid - gap)),
-                (CGPoint(x: mid, y: mid + gap), CGPoint(x: mid, y: rect.maxY - 1)),
-                (CGPoint(x: rect.minX + 1, y: mid), CGPoint(x: mid - gap, y: mid)),
-                (CGPoint(x: mid + gap, y: mid), CGPoint(x: rect.maxX - 1, y: mid)),
-            ]
-            context.setLineCap(.round)
-            // A dark halo under the green keeps the crosshair readable on light and dark screens.
-            for (width, color) in [(CGFloat(3.5), halo), (CGFloat(1.5), greenColor)] {
-                context.setLineWidth(width)
-                context.setStrokeColor(color)
-                for (from, to) in arms {
-                    context.move(to: from)
-                    context.addLine(to: to)
-                }
-                context.strokePath()
-            }
-            let dot = CGRect(x: mid - 1.25, y: mid - 1.25, width: 2.5, height: 2.5)
-            context.setFillColor(greenColor)
-            context.fillEllipse(in: dot)
-            return true
-        }
-        return NSCursor(image: image, hotSpot: NSPoint(x: 15.5, y: 15.5))
-    }()
+    static let shared: NSCursor = load() ?? .crosshair
+
+    private static func load() -> NSCursor? {
+        let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
+        guard let image = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")) else { return nil }
+        let info = NSDictionary(contentsOf: folder.appendingPathComponent("info.plist"))
+        let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.width / 2
+        let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.height / 2
+        return NSCursor(image: image, hotSpot: NSPoint(x: hotX, y: hotY))
+    }
 }
