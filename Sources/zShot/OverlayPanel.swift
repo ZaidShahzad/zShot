@@ -327,7 +327,7 @@ private final class ChromeView: NSView {
     /// Keeps a window's border to its visible parts.
     private let borderMask = CAShapeLayer()
     /// A soft drop shadow around the highlighted window, like a raised window. `shadowMask` keeps it outside the window.
-    private let shadow = CAShapeLayer()
+    private let windowShadow = CAShapeLayer()
     private let shadowMask = CAShapeLayer()
     private var hole: Hole?
 
@@ -340,14 +340,14 @@ private final class ChromeView: NSView {
         dim.path = CGPath(rect: bounds, transform: nil)
         coveredDim.fillColor = dimColor
         border.fillColor = nil
-        shadow.fillColor = NSColor.black.cgColor
-        shadow.shadowColor = NSColor.black.cgColor
-        shadow.shadowOpacity = 0.55
-        shadow.shadowRadius = 14
-        shadow.shadowOffset = CGSize(width: 0, height: -6)
-        shadow.isHidden = true
+        windowShadow.fillColor = NSColor.black.cgColor
+        windowShadow.shadowColor = NSColor.black.cgColor
+        windowShadow.shadowOpacity = 0.55
+        windowShadow.shadowRadius = 14
+        windowShadow.shadowOffset = CGSize(width: 0, height: -6)
+        windowShadow.isHidden = true
         shadowMask.fillRule = .evenOdd
-        shadow.mask = shadowMask
+        windowShadow.mask = shadowMask
         layOutShapes()
         layer?.addSublayer(dim)
         for areaDim in areaDims {
@@ -355,7 +355,7 @@ private final class ChromeView: NSView {
             areaDim.isHidden = true
             layer?.addSublayer(areaDim)
         }
-        layer?.addSublayer(shadow)
+        layer?.addSublayer(windowShadow)
         layer?.addSublayer(coveredDim)
         layer?.addSublayer(border)
     }
@@ -383,7 +383,7 @@ private final class ChromeView: NSView {
     }
 
     /// Every path and mask is in the view's coordinates, so each shape layer fills the view.
-    private var shapes: [CAShapeLayer] { [dim, coveredDim, coveredMask, border, borderMask, shadow, shadowMask] }
+    private var shapes: [CAShapeLayer] { [dim, coveredDim, coveredMask, border, borderMask, windowShadow, shadowMask] }
 
     private func layOutShapes() {
         for shape in shapes {
@@ -447,9 +447,9 @@ private final class ChromeView: NSView {
         coveredDim.mask = coveredPath == nil ? nil : coveredMask
         border.mask = coveredPath == nil ? nil : borderMask
         border.path = borderPath
-        shadow.isHidden = shadowPath == nil
-        shadow.path = shadowPath
-        shadow.shadowPath = shadowPath
+        windowShadow.isHidden = shadowPath == nil
+        windowShadow.path = shadowPath
+        windowShadow.shadowPath = shadowPath
         if let shadowPath {
             let outside = CGMutablePath()
             outside.addRect(bounds.insetBy(dx: -40, dy: -40))
@@ -461,24 +461,24 @@ private final class ChromeView: NSView {
         case (.some(.window(_)), .some(.window(_))):
             Self.crossFade(dim)
             Self.crossFade(coveredDim)
-            Self.crossFade(shadow)
+            Self.crossFade(windowShadow)
             Self.crossFade(border)
         case (_, .some(.window(_))):
             dim.removeAllAnimations()
             coveredDim.removeAllAnimations()
             border.removeAllAnimations()
-            shadow.removeAllAnimations()
+            windowShadow.removeAllAnimations()
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
             fade.toValue = 1
             fade.duration = 0.04
             border.add(fade, forKey: "opacity")
-            shadow.add(fade, forKey: "opacity")
+            windowShadow.add(fade, forKey: "opacity")
         default:
             dim.removeAllAnimations()
             coveredDim.removeAllAnimations()
             border.removeAllAnimations()
-            shadow.removeAllAnimations()
+            windowShadow.removeAllAnimations()
         }
     }
 
