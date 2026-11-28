@@ -13,9 +13,14 @@ final class OverlayPanel: NSPanel {
     private let liftedView = LiftedView(frame: .zero)
     private let chrome: ChromeView
     private let canvas = CanvasView(frame: .zero)
+    private let handles: HandlesView
     private let sizeLabel = NSTextField(labelWithString: "")
     private let toolStrip = Toolbar()
     private var mouseDownInToolbar = false
+    /// The Selection as last rendered, in global points, so the pointer can turn into a resize pointer over its handles.
+    private var renderedSelection: CGRect?
+    /// The handle being dragged, as last rendered.
+    private var draggedHandle: SelectionHandle?
 
     init(screen: NSScreen) {
         displayScreen = screen
@@ -23,6 +28,7 @@ final class OverlayPanel: NSPanel {
         let bounds = CGRect(origin: .zero, size: screen.frame.size)
         backdrop = BackdropView(frame: bounds)
         chrome = ChromeView(frame: bounds)
+        handles = HandlesView(frame: bounds)
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 
         level = .screenSaver
@@ -46,9 +52,11 @@ final class OverlayPanel: NSPanel {
         sizeLabel.isHidden = true
 
         chrome.autoresizingMask = [.width, .height]
+        handles.autoresizingMask = [.width, .height]
         backdrop.addSubview(liftedView)
         backdrop.addSubview(chrome)
         backdrop.addSubview(canvas)
+        backdrop.addSubview(handles)
         backdrop.addSubview(sizeLabel)
         backdrop.addSubview(toolStrip)
         contentView = backdrop
@@ -118,7 +126,10 @@ final class OverlayPanel: NSPanel {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         chrome.update(hole: hole)
+        handles.update(selection: selection.map(local))
         CATransaction.commit()
+        renderedSelection = selection
+        draggedHandle = session.activeHandle
 
         if let selection {
             let frame = local(selection).intersection(backdrop.bounds)
@@ -194,6 +205,9 @@ final class OverlayPanel: NSPanel {
             if mouseDownInToolbar {
                 super.sendEvent(event)
             } else {
+                if let draggedHandle {
+                    ResizeCursor.cursor(for: draggedHandle).set()
+                }
                 onInput?(.mouseDragged(globalPoint(event)))
             }
         case .leftMouseUp:
@@ -205,13 +219,17 @@ final class OverlayPanel: NSPanel {
             mouseDownInToolbar = false
         case .mouseMoved:
             if !isKeyWindow { makeKey() }
+            let point = globalPoint(event)
             // Set on every move: zShot never activates, so cursor rects alone don't reliably hold.
             if !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow) {
                 NSCursor.arrow.set()
+            } else if let selection = renderedSelection,
+                      let handle = SelectionHandle.hit(point, in: selection, radius: ScreenshotSession.handleRadius) {
+                ResizeCursor.cursor(for: handle).set()
             } else {
                 ScreenshotCursor.shared.set()
             }
-            onInput?(.mouseMoved(globalPoint(event)))
+            onInput?(.mouseMoved(point))
         case .flagsChanged:
             onInput?(.shiftChanged(event.modifierFlags.contains(.shift)))
         case .keyDown:
@@ -568,6 +586,74 @@ private final class CanvasView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.translateBy(x: -globalOrigin.x, y: -globalOrigin.y)
         AnnotationRenderer.draw(annotations, in: context)
+    }
+}
+
+/// The Selection's eight resize handles. Each display draws the part of each handle that falls on it.
+private final class HandlesView: NSView {
+    private static let diameter: CGFloat = 9
+    private let dots: [CALayer] = SelectionHandle.allCases.map { _ in CALayer() }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        let size = Self.diameter
+        for dot in dots {
+            dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.backgroundColor = NSColor.white.cgColor
+            dot.borderWidth = 1
+            dot.borderColor = NSColor.black.withAlphaComponent(0.25).cgColor
+            dot.shadowColor = NSColor.black.cgColor
+            dot.shadowOpacity = 0.3
+            dot.shadowRadius = 1.5
+            dot.shadowOffset = CGSize(width: 0, height: -0.5)
+            dot.shadowPath = CGPath(ellipseIn: dot.bounds, transform: nil)
+            dot.isHidden = true
+            layer?.addSublayer(dot)
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// `selection` is in this view's coordinates; nil hides every handle. Call inside a transaction with actions disabled.
+    func update(selection: CGRect?) {
+        for (handle, dot) in zip(SelectionHandle.allCases, dots) {
+            guard let selection, handle.isAvailable(on: selection, radius: ScreenshotSession.handleRadius) else {
+                dot.isHidden = true
+                continue
+            }
+            dot.position = handle.point(in: selection)
+            dot.isHidden = !dot.frame.intersects(bounds)
+        }
+    }
+}
+
+/// The pointer over a resize handle: macOS's own frame resize pointers on macOS 15 and later, the plain resize pointers before.
+@MainActor
+enum ResizeCursor {
+    static func cursor(for handle: SelectionHandle) -> NSCursor {
+        if #available(macOS 15, *) {
+            switch handle {
+            case .topLeft: return .frameResize(position: .topLeft, directions: .all)
+            case .top: return .frameResize(position: .top, directions: .all)
+            case .topRight: return .frameResize(position: .topRight, directions: .all)
+            case .left: return .frameResize(position: .left, directions: .all)
+            case .right: return .frameResize(position: .right, directions: .all)
+            case .bottomLeft: return .frameResize(position: .bottomLeft, directions: .all)
+            case .bottom: return .frameResize(position: .bottom, directions: .all)
+            case .bottomRight: return .frameResize(position: .bottomRight, directions: .all)
+            }
+        }
+        switch handle {
+        case .left, .right: return .resizeLeftRight
+        case .top, .bottom: return .resizeUpDown
+        case .topLeft, .topRight, .bottomLeft, .bottomRight: return .crosshair
+        }
     }
 }
 

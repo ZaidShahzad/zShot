@@ -280,3 +280,73 @@ private func annotatingSession() -> ScreenshotSession {
     #expect(outcome == nil)
     #expect(session.phase == .choosing(hover: nil))
 }
+
+/// Annotating a dragged Selection of (200, 200, 400, 300).
+private func resizableSession() -> ScreenshotSession {
+    var session = makeSession()
+    drag(&session, from: CGPoint(x: 200, y: 200), to: CGPoint(x: 600, y: 500))
+    return session
+}
+
+@Test func draggingACornerMovesItsTwoEdges() {
+    var session = resizableSession()
+    drag(&session, from: CGPoint(x: 200, y: 200), to: CGPoint(x: 150, y: 180))
+    #expect(selected(session) == CGRect(x: 150, y: 180, width: 450, height: 320))
+    #expect(session.history.annotations.isEmpty)
+}
+
+@Test func draggingAnEdgeMovesOnlyThatEdgeAndKeepsTheGrabOffset() {
+    var session = resizableSession()
+    _ = session.handle(.mouseDown(CGPoint(x: 602, y: 345)))
+    #expect(session.activeHandle == .right)
+    _ = session.handle(.mouseDragged(CGPoint(x: 702, y: 300)))
+    _ = session.handle(.mouseUp(CGPoint(x: 702, y: 300)))
+    #expect(selected(session) == CGRect(x: 200, y: 200, width: 500, height: 300))
+    #expect(session.activeHandle == nil)
+}
+
+@Test func draggingPastTheOppositeEdgeFlips() {
+    var session = resizableSession()
+    _ = session.handle(.mouseDown(CGPoint(x: 400, y: 500)))
+    _ = session.handle(.mouseDragged(CGPoint(x: 400, y: 300)))
+    #expect(selected(session) == CGRect(x: 200, y: 200, width: 400, height: 100))
+    _ = session.handle(.mouseDragged(CGPoint(x: 400, y: 120)))
+    #expect(selected(session) == CGRect(x: 200, y: 120, width: 400, height: 80))
+    _ = session.handle(.mouseUp(CGPoint(x: 400, y: 120)))
+    #expect(selected(session) == CGRect(x: 200, y: 120, width: 400, height: 80))
+}
+
+@Test func pressingAwayFromTheHandlesDrawsAnAnnotation() {
+    var session = resizableSession()
+    drag(&session, from: CGPoint(x: 300, y: 300), to: CGPoint(x: 400, y: 400))
+    let arrow = Annotation(shape: .arrow(from: CGPoint(x: 300, y: 300), to: CGPoint(x: 400, y: 400)), swatch: .red, thickness: .medium)
+    #expect(session.history.annotations == [arrow])
+    #expect(selected(session) == CGRect(x: 200, y: 200, width: 400, height: 300))
+}
+
+@Test func resizingAChosenWindowMakesItAPlainArea() {
+    var session = makeSession()
+    let point = CGPoint(x: 150, y: 150)
+    drag(&session, from: point, to: point)
+    #expect(session.selectedWindow?.frame == frontWindow)
+
+    _ = session.handle(.mouseDown(CGPoint(x: 400, y: 300)))
+    #expect(session.selectedWindow?.frame == frontWindow)
+    _ = session.handle(.mouseDragged(CGPoint(x: 450, y: 350)))
+    _ = session.handle(.mouseUp(CGPoint(x: 450, y: 350)))
+    #expect(selected(session) == CGRect(x: 100, y: 100, width: 350, height: 250))
+    #expect(session.selectedWindow == nil)
+}
+
+@Test func handleHitPrefersCornersAndSkipsMiddlesOnShortSides() {
+    let radius = ScreenshotSession.handleRadius
+    let rect = CGRect(x: 0, y: 0, width: 3 * radius, height: 100)
+    // Within reach of both the bottom-left corner and the bottom middle, which is nearer.
+    #expect(SelectionHandle.hit(CGPoint(x: 7, y: 0), in: rect, radius: radius) == .bottomLeft)
+    #expect(SelectionHandle.hit(CGPoint(x: 1, y: 50), in: rect, radius: radius) == .left)
+    #expect(SelectionHandle.hit(CGPoint(x: 50, y: 50), in: rect, radius: radius) == nil)
+
+    let narrow = CGRect(x: 0, y: 0, width: 20, height: 100)
+    #expect(SelectionHandle.hit(CGPoint(x: 10, y: 0), in: narrow, radius: radius) == nil)
+    #expect(SelectionHandle.hit(CGPoint(x: 10, y: 100), in: narrow, radius: radius) == nil)
+}

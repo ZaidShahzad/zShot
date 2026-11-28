@@ -33,6 +33,8 @@ public enum Outcome: Equatable, Sendable {
 /// Screenshot mode state. All points and rects are global AppKit points.
 public struct ScreenshotSession: Sendable {
     public static let dragThreshold: CGFloat = 4
+    /// How close to a resize handle's center a press grabs it.
+    public static let handleRadius: CGFloat = 8
 
     public let displays: [CGRect]
     /// Front to back.
@@ -44,6 +46,23 @@ public struct ScreenshotSession: Sendable {
     public private(set) var history = AnnotationHistory()
     public private(set) var mouse: CGPoint
     public private(set) var shiftDown = false
+    /// Set only while annotating with no draft: a press either grabs a handle or starts an Annotation.
+    private var resize: Resize?
+
+    /// A handle drag. It always resizes the Selection as it was at the press, so dragging past the opposite edge flips cleanly.
+    private struct Resize: Sendable {
+        let handle: SelectionHandle
+        let start: CGRect
+        /// From the press to the handle's center, so the edge does not jump to the pointer.
+        let offset: CGPoint
+
+        func selection(to point: CGPoint) -> CGRect {
+            handle.resized(start, to: CGPoint(x: point.x + offset.x, y: point.y + offset.y))
+        }
+    }
+
+    /// The handle being dragged, while the Selection is being resized.
+    public var activeHandle: SelectionHandle? { resize?.handle }
 
     public init(displays: [CGRect], windows: [WindowTarget], style: ToolStyle, mouse: CGPoint) {
         self.displays = displays
@@ -97,7 +116,12 @@ public struct ScreenshotSession: Sendable {
         case .choosing:
             phase = .pressing(origin: point, hover: window(at: point))
         case .annotating(let selection, _):
-            phase = .annotating(selection: selection, draft: Draft(style: style, start: point))
+            if let handle = SelectionHandle.hit(point, in: selection, radius: Self.handleRadius) {
+                let center = handle.point(in: selection)
+                resize = Resize(handle: handle, start: selection, offset: CGPoint(x: center.x - point.x, y: center.y - point.y))
+            } else {
+                phase = .annotating(selection: selection, draft: Draft(style: style, start: point))
+            }
         case .pressing, .selecting:
             break
         }
@@ -114,7 +138,15 @@ public struct ScreenshotSession: Sendable {
         case .annotating(let selection, var draft?):
             draft.extend(to: point)
             phase = .annotating(selection: selection, draft: draft)
-        case .choosing, .annotating(_, .none):
+        case .annotating(let selection, .none):
+            guard let resize else { break }
+            let resized = resize.selection(to: point)
+            // A resized window is a plain area: it no longer matches the window, so it is no longer outlined or lifted as one.
+            if resized != selection {
+                selectedWindow = nil
+                phase = .annotating(selection: resized, draft: nil)
+            }
+        case .choosing:
             break
         }
     }
@@ -140,7 +172,9 @@ public struct ScreenshotSession: Sendable {
             draft.extend(to: point)
             commit(draft)
             phase = .annotating(selection: selection, draft: nil)
-        case .choosing, .annotating(_, .none):
+        case .annotating(_, .none):
+            resize = nil
+        case .choosing:
             break
         }
     }
@@ -161,6 +195,7 @@ public struct ScreenshotSession: Sendable {
         case .fullDisplay:
             if let display = displayUnderMouse {
                 selectedWindow = nil
+                resize = nil
                 phase = .annotating(selection: display, draft: nil)
             }
         case .selectTool(let tool):
