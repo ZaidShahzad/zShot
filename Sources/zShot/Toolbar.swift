@@ -1,25 +1,37 @@
 import AppKit
 import ZShotCore
 
-/// Tool, color, and thickness picker shown next to the Selection.
+/// Tool picker, color and thickness buttons, Copy, and Close, shown next to the Selection.
+/// The color and thickness buttons each show the current choice and open `choices` with every option.
 @MainActor
 final class Toolbar: NSView {
     var onCommand: (@MainActor (Command) -> Void)?
+    /// The row of colors or thicknesses above its button. The owner adds it to the Toolbar's superview, so it can sit outside
+    /// the Toolbar, and routes clicks on it like clicks on the Toolbar.
+    let choices = ChoiceStrip()
+
+    /// The Toolbar buttons that open `choices`, in order.
+    private enum Picker: Int, CaseIterable {
+        case swatch, thickness
+    }
 
     private var toolButtons: [NSButton] = []
+    private var pickerButtons: [NSButton] = []
+    /// Shown in `choices` while their Picker is open.
     private var swatchButtons: [NSButton] = []
     private var thicknessButtons: [NSButton] = []
+    private var openPicker: Picker?
+    private var shownStyle: ToolStyle?
 
     init() {
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        layer?.cornerRadius = 8
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        applyBarStyle()
 
         toolButtons = Tool.allCases.enumerated().map { index, tool in
             button(image: NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.rawValue), tag: index, action: #selector(toolPressed))
+        }
+        pickerButtons = Picker.allCases.map { picker in
+            button(image: nil, tag: picker.rawValue, action: #selector(pickerPressed))
         }
         swatchButtons = Swatch.allCases.enumerated().map { index, swatch in
             button(image: Self.swatchImage(swatch), tag: index, action: #selector(swatchPressed))
@@ -30,7 +42,7 @@ final class Toolbar: NSView {
         let copy = button(image: NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy"), tag: 0, action: #selector(copyPressed))
         let close = button(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close"), tag: 0, action: #selector(closePressed))
 
-        let groups: [[NSView]] = [toolButtons, swatchButtons, thicknessButtons, [copy, close]]
+        let groups: [[NSView]] = [toolButtons, pickerButtons, [copy, close]]
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 2
@@ -54,9 +66,21 @@ final class Toolbar: NSView {
     }
 
     func update(style: ToolStyle) {
+        guard style != shownStyle else { return }
+        shownStyle = style
         highlight(toolButtons, selected: Tool.allCases.firstIndex(of: style.tool))
         highlight(swatchButtons, selected: Swatch.allCases.firstIndex(of: style.swatch))
         highlight(thicknessButtons, selected: Thickness.allCases.firstIndex(of: style.thickness))
+        pickerButtons[Picker.swatch.rawValue].image = Self.swatchImage(style.swatch)
+        pickerButtons[Picker.thickness.rawValue].image = Self.thicknessImage(style.thickness)
+    }
+
+    /// Hides `choices`. Does nothing when they are already hidden.
+    func closeChoices() {
+        guard openPicker != nil else { return }
+        openPicker = nil
+        choices.isHidden = true
+        highlight(pickerButtons, selected: nil)
     }
 
     private func highlight(_ buttons: [NSButton], selected: Int?) {
@@ -81,15 +105,47 @@ final class Toolbar: NSView {
         return button
     }
 
+    /// Centered above `button`, kept on the display; below the Toolbar when there is no room above.
+    private func placeChoices(above button: NSButton) {
+        guard let container = choices.superview else { return }
+        let gap: CGFloat = 6
+        let size = choices.frame.size
+        let anchor = button.convert(button.bounds, to: container)
+        let bar = convert(bounds, to: container)
+        let area = container.bounds
+        var y = bar.maxY + gap
+        if y + size.height > area.maxY {
+            y = bar.minY - gap - size.height
+        }
+        let x = min(max(anchor.midX - size.width / 2, area.minX + gap), area.maxX - size.width - gap)
+        choices.setFrameOrigin(CGPoint(x: x, y: y))
+    }
+
     @objc private func toolPressed(_ sender: NSButton) {
+        closeChoices()
         onCommand?(.selectTool(Tool.allCases[sender.tag]))
     }
 
+    /// Opens its Picker's choices, or closes them when they are already open.
+    @objc private func pickerPressed(_ sender: NSButton) {
+        guard let picker = Picker(rawValue: sender.tag) else { return }
+        guard openPicker != picker else {
+            closeChoices()
+            return
+        }
+        openPicker = picker
+        highlight(pickerButtons, selected: picker.rawValue)
+        choices.show(picker == .swatch ? swatchButtons : thicknessButtons)
+        placeChoices(above: sender)
+    }
+
     @objc private func swatchPressed(_ sender: NSButton) {
+        closeChoices()
         onCommand?(.selectSwatch(Swatch.allCases[sender.tag]))
     }
 
     @objc private func thicknessPressed(_ sender: NSButton) {
+        closeChoices()
         onCommand?(.selectThickness(Thickness.allCases[sender.tag]))
     }
 
@@ -129,6 +185,50 @@ final class Toolbar: NSView {
         }
         image.isTemplate = true
         return image
+    }
+}
+
+/// A row of colors or thicknesses that a Toolbar button opens. Hidden until then.
+@MainActor
+final class ChoiceStrip: NSView {
+    private let stack = NSStackView()
+
+    init() {
+        super.init(frame: .zero)
+        applyBarStyle()
+        stack.orientation = .horizontal
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        addSubview(stack)
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// Shows `buttons` in place of any shown before, sized to fit them.
+    func show(_ buttons: [NSButton]) {
+        for view in stack.arrangedSubviews {
+            view.removeFromSuperview()
+        }
+        for button in buttons {
+            stack.addArrangedSubview(button)
+        }
+        setFrameSize(stack.fittingSize)
+        stack.frame = bounds
+        isHidden = false
+    }
+}
+
+private extension NSView {
+    /// The Toolbar's look, shared by its choices.
+    func applyBarStyle() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.cornerRadius = 8
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.separatorColor.cgColor
     }
 }
 

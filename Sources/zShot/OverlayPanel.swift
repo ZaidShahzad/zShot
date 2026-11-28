@@ -62,6 +62,7 @@ final class OverlayPanel: NSPanel {
         backdrop.addSubview(handles)
         backdrop.addSubview(sizeLabel)
         backdrop.addSubview(toolStrip)
+        backdrop.addSubview(toolStrip.choices)
         contentView = backdrop
         initialFirstResponder = backdrop
 
@@ -179,6 +180,7 @@ final class OverlayPanel: NSPanel {
             toolStrip.setFrameOrigin(toolbarOrigin(for: local(selection)))
             toolStrip.isHidden = false
         } else {
+            toolStrip.closeChoices()
             toolStrip.isHidden = true
         }
 
@@ -207,10 +209,12 @@ final class OverlayPanel: NSPanel {
         switch event.type {
         case .leftMouseDown:
             if !isKeyWindow { makeKey() }
-            mouseDownInToolbar = !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow)
+            mouseDownInToolbar = isOverToolbar(event.locationInWindow)
             if mouseDownInToolbar {
                 super.sendEvent(event)
             } else {
+                // A press anywhere else, such as one starting a mark, closes the Toolbar's choices.
+                toolStrip.closeChoices()
                 onInput?(.mouseDown(globalPoint(event)))
             }
         case .leftMouseDragged:
@@ -247,7 +251,7 @@ final class OverlayPanel: NSPanel {
 
     /// Set on every move: zShot never activates, so cursor rects alone don't reliably hold. `point` is in global points.
     private func updatePointer(at point: CGPoint) {
-        if !toolStrip.isHidden && toolStrip.frame.contains(convertPoint(fromScreen: point)) {
+        if isOverToolbar(convertPoint(fromScreen: point)) {
             NSCursor.arrow.set()
         } else if let rect = renderedHandles,
                   let handle = SelectionHandle.hit(point, in: rect, radius: ScreenshotSession.handleRadius) {
@@ -257,6 +261,12 @@ final class OverlayPanel: NSPanel {
         } else {
             ScreenshotCursor.shared.set()
         }
+    }
+
+    /// `point` is in window coordinates. The Toolbar's open choices count as the Toolbar.
+    private func isOverToolbar(_ point: CGPoint) -> Bool {
+        (!toolStrip.isHidden && toolStrip.frame.contains(point))
+            || (!toolStrip.choices.isHidden && toolStrip.choices.frame.contains(point))
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -271,6 +281,7 @@ final class OverlayPanel: NSPanel {
             command: flags.contains(.command),
             shift: flags.contains(.shift))
         else { return false }
+        toolStrip.closeChoices()
         onInput?(.command(command))
         return true
     }
