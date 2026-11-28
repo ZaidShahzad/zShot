@@ -37,6 +37,8 @@ public struct ScreenshotSession: Sendable {
     public static let handleRadius: CGFloat = 8
     /// How far a handle's center must sit from the usable area's edge for the whole handle to show.
     public static let handleClearance: CGFloat = 6
+    /// The same, next to the Dock or menu bar.
+    public static let barClearance: CGFloat = 14
 
     public let displays: [CGRect]
     /// Front to back.
@@ -93,13 +95,19 @@ public struct ScreenshotSession: Sendable {
         guard let area = handleArea.max(by: { overlap($0) < overlap($1) }), overlap(area) > 0 else { return rect }
         // Handles straddle the outline. Only where that would put part of one off the usable area is the edge pulled in,
         // just far enough for the handle to show whole.
-        let reach = Self.handleClearance
-        let inset = reach
+        // Against the Dock or menu bar, where the usable area stops short of the display's edge, handles keep a wider gap
+        // so they read as sitting above the Dock rather than tucked against it.
+        let display = displays.first { $0.contains(CGPoint(x: area.midX, y: area.midY)) } ?? area
+        func clearance(_ insetByBar: Bool) -> CGFloat { insetByBar ? Self.barClearance : Self.handleClearance }
+        let left = clearance(area.minX > display.minX)
+        let right = clearance(area.maxX < display.maxX)
+        let bottom = clearance(area.minY > display.minY)
+        let top = clearance(area.maxY < display.maxY)
         var minX = rect.minX, maxX = rect.maxX, minY = rect.minY, maxY = rect.maxY
-        if minX < area.minX + reach { minX = area.minX + inset }
-        if maxX > area.maxX - reach { maxX = area.maxX - inset }
-        if minY < area.minY + reach { minY = area.minY + inset }
-        if maxY > area.maxY - reach { maxY = area.maxY - inset }
+        if minX < area.minX + left { minX = area.minX + left }
+        if maxX > area.maxX - right { maxX = area.maxX - right }
+        if minY < area.minY + bottom { minY = area.minY + bottom }
+        if maxY > area.maxY - top { maxY = area.maxY - top }
         // A sliver along an edge collapses to its middle rather than turning inside out.
         if minX > maxX {
             minX = (minX + maxX) / 2
