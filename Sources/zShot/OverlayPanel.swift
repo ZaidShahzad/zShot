@@ -415,7 +415,10 @@ private final class ChromeView: NSView {
             let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
             dimPath.addPath(outline)
             shadowPath = outline
-            borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
+            // Only the display the window is on draws its outline, so the glow never bleeds onto a neighboring display.
+            if !rect.intersection(bounds).isEmpty {
+                borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
+            }
             border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
             // A soft green glow hugging the line gives it a clean, modern edge instead of a flat stroke.
