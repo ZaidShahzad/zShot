@@ -414,3 +414,17 @@ private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
     _ = session.handle(.mouseUp(CGPoint(x: 401, y: 150)))
     #expect(selected(session) == CGRect(x: 200, y: 149, width: 400, height: 171))
 }
+
+@Test func handlesOfAWindowPokingOntoTheNextDisplayStayInsideItsOwnDisplay() {
+    var session = makeSession()
+    let usableSide = CGRect(x: 1440, y: 0, width: 1920, height: 1055)
+    session.handleArea = [usableMain, usableSide]
+    // Covers the whole main display and pokes 20 pt onto the side display, like a maximized window behind the Dock.
+    let window = CGRect(x: 0, y: 0, width: 1460, height: 900)
+    let layout = session.handleLayout(for: window)
+    let radius = ScreenshotSession.handleRadius
+    for handle in SelectionHandle.allCases {
+        let point = handle.point(in: layout)
+        #expect(usableMain.insetBy(dx: radius, dy: radius).contains(point))
+    }
+}

@@ -82,9 +82,13 @@ public struct ScreenshotSession: Sendable {
     /// The rect `rect`'s handles are laid out on. Kept inside the part of `handleArea` it touches, and pulled in from any edge
     /// at, near, or past that area's edge, so no handle hides under the menu bar or Dock or runs off the display.
     public func handleLayout(for rect: CGRect) -> CGRect {
-        let touched = handleArea.filter { !$0.intersection(rect).isEmpty }
-        guard let first = touched.first else { return rect }
-        let area = touched.dropFirst().reduce(first) { $0.union($1) }
+        // The usable area of the one display holding most of the rect. A bounding box over several displays
+        // would reach past one display's Dock or edges and leave handles cut off there.
+        func overlap(_ area: CGRect) -> CGFloat {
+            let shared = area.intersection(rect)
+            return shared.isNull ? 0 : shared.width * shared.height
+        }
+        guard let area = handleArea.max(by: { overlap($0) < overlap($1) }), overlap(area) > 0 else { return rect }
         let reach = Self.handleRadius
         let inset = reach + 1
         var minX = rect.minX, maxX = rect.maxX, minY = rect.minY, maxY = rect.maxY
