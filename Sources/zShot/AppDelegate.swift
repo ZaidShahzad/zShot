@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CaptureSound.preload()
         let controller = ScreenshotController(preferences: preferences, capturer: capturer)
         self.controller = controller
         hotKey = HotKey { [weak controller] time in

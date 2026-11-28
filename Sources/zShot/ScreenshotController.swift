@@ -190,6 +190,7 @@ final class ScreenshotController {
 
     private func finish(selection: CGRect, annotations: [Annotation]) {
         let start = ProcessInfo.processInfo.systemUptime
+        CaptureSound.play()
         let screen = session.flatMap { toolbarPanel(for: $0) }?.displayScreen ?? NSScreen.main
         let freeze = freezeTask
         let liftTask = lift?.task
