@@ -326,6 +326,9 @@ private final class ChromeView: NSView {
     private let border = CAShapeLayer()
     /// Keeps a window's border to its visible parts.
     private let borderMask = CAShapeLayer()
+    /// A soft drop shadow around the highlighted window, like a raised window. `shadowMask` keeps it outside the window.
+    private let shadow = CAShapeLayer()
+    private let shadowMask = CAShapeLayer()
     private var hole: Hole?
 
     override init(frame: NSRect) {
@@ -337,6 +340,14 @@ private final class ChromeView: NSView {
         dim.path = CGPath(rect: bounds, transform: nil)
         coveredDim.fillColor = dimColor
         border.fillColor = nil
+        shadow.fillColor = NSColor.black.cgColor
+        shadow.shadowColor = NSColor.black.cgColor
+        shadow.shadowOpacity = 0.55
+        shadow.shadowRadius = 14
+        shadow.shadowOffset = CGSize(width: 0, height: -6)
+        shadow.isHidden = true
+        shadowMask.fillRule = .evenOdd
+        shadow.mask = shadowMask
         layOutShapes()
         layer?.addSublayer(dim)
         for areaDim in areaDims {
@@ -344,6 +355,7 @@ private final class ChromeView: NSView {
             areaDim.isHidden = true
             layer?.addSublayer(areaDim)
         }
+        layer?.addSublayer(shadow)
         layer?.addSublayer(coveredDim)
         layer?.addSublayer(border)
     }
@@ -371,7 +383,7 @@ private final class ChromeView: NSView {
     }
 
     /// Every path and mask is in the view's coordinates, so each shape layer fills the view.
-    private var shapes: [CAShapeLayer] { [dim, coveredDim, coveredMask, border, borderMask] }
+    private var shapes: [CAShapeLayer] { [dim, coveredDim, coveredMask, border, borderMask, shadow, shadowMask] }
 
     private func layOutShapes() {
         for shape in shapes {
@@ -389,13 +401,15 @@ private final class ChromeView: NSView {
         // Borders sit inside the hole. Outside it, a hole touching a display edge would draw a line on the next display.
         var borderPath: CGPath?
         var coveredPath: CGPath?
+        var shadowPath: CGPath?
         var area: CGRect?
         switch newHole {
         case .window(let target):
-            let width: CGFloat = 1
+            let width: CGFloat = 1.5
             let rect = target.frame
             let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
             dimPath.addPath(outline)
+            shadowPath = outline
             borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             border.strokeColor = (isDark ? NSColor.white.withAlphaComponent(0.3) : NSColor.black.withAlphaComponent(0.25)).cgColor
@@ -433,25 +447,38 @@ private final class ChromeView: NSView {
         coveredDim.mask = coveredPath == nil ? nil : coveredMask
         border.mask = coveredPath == nil ? nil : borderMask
         border.path = borderPath
+        shadow.isHidden = shadowPath == nil
+        shadow.path = shadowPath
+        shadow.shadowPath = shadowPath
+        if let shadowPath {
+            let outside = CGMutablePath()
+            outside.addRect(bounds.insetBy(dx: -40, dy: -40))
+            outside.addPath(shadowPath)
+            shadowMask.path = outside
+        }
 
         switch (previous, newHole) {
         case (.some(.window(_)), .some(.window(_))):
             Self.crossFade(dim)
             Self.crossFade(coveredDim)
+            Self.crossFade(shadow)
             Self.crossFade(border)
         case (_, .some(.window(_))):
             dim.removeAllAnimations()
             coveredDim.removeAllAnimations()
             border.removeAllAnimations()
+            shadow.removeAllAnimations()
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
             fade.toValue = 1
             fade.duration = 0.04
             border.add(fade, forKey: "opacity")
+            shadow.add(fade, forKey: "opacity")
         default:
             dim.removeAllAnimations()
             coveredDim.removeAllAnimations()
             border.removeAllAnimations()
+            shadow.removeAllAnimations()
         }
     }
 
