@@ -379,9 +379,9 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered or selected window: rounded like a window, outlined in dotted white, cross-fades to the next window.
+        /// The hovered or selected window: rounded like a window, outlined in dotted green, cross-fades to the next window.
         case window(WindowTarget)
-        /// An area being dragged out, or a dragged or full-display Selection: square, bordered in white, follows the mouse exactly.
+        /// An area being dragged out, or a dragged or full-display Selection: square, outlined in dotted green, follows the mouse exactly.
         case area(CGRect)
     }
 
@@ -486,7 +486,7 @@ private final class ChromeView: NSView {
             if !rect.intersection(bounds).isEmpty {
                 borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             }
-            border.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
+            border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
             // Short square dashes with gaps as wide.
             border.lineDashPattern = [3, 3]
@@ -504,9 +504,9 @@ private final class ChromeView: NSView {
             let width: CGFloat = 1
             area = rect
             borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
-            border.strokeColor = NSColor.white.cgColor
+            border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
-            border.lineDashPattern = nil
+            border.lineDashPattern = [3, 3]
         case nil:
             break
         }

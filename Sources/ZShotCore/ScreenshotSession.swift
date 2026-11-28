@@ -72,8 +72,8 @@ public struct ScreenshotSession: Sendable {
         switch phase {
         case .choosing(let hover), .pressing(_, let hover):
             return hover?.frame ?? displayUnderMouse
-        case .selecting:
-            return nil
+        case .selecting(let anchor, let current):
+            return Geometry.rect(from: anchor, to: current)
         case .annotating(let selection, _):
             return selection
         }
