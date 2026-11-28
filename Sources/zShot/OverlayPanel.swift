@@ -351,7 +351,7 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered or selected window: rounded like a window, outlined in white, cross-fades to the next window.
+        /// The hovered or selected window: rounded like a window, outlined in dotted white, cross-fades to the next window.
         case window(WindowTarget)
         /// An area being dragged out, or a dragged or full-display Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
@@ -379,7 +379,7 @@ private final class ChromeView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        let dimColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        let dimColor = NSColor.black.withAlphaComponent(0.75).cgColor
         dim.fillColor = dimColor
         dim.fillRule = .evenOdd
         dim.path = CGPath(rect: bounds, transform: nil)
@@ -449,7 +449,7 @@ private final class ChromeView: NSView {
         var area: CGRect?
         switch newHole {
         case .window(let target):
-            let width: CGFloat = 1.5
+            let width: CGFloat = 1
             let rect = target.frame
             let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
             dimPath.addPath(outline)
@@ -460,6 +460,9 @@ private final class ChromeView: NSView {
             }
             border.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
             border.lineWidth = width
+            // Short square dashes with gaps as wide.
+            border.lineDashPattern = [3, 3]
+            border.lineCap = .butt
             if !target.covered.isEmpty {
                 let covered = CGMutablePath()
                 covered.addRects(target.covered)
@@ -475,6 +478,7 @@ private final class ChromeView: NSView {
             borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
             border.strokeColor = NSColor.white.cgColor
             border.lineWidth = width
+            border.lineDashPattern = nil
         case nil:
             break
         }
@@ -660,25 +664,27 @@ enum ResizeCursor {
     }
 }
 
-/// Screenshot mode's pointer: macOS's own screenshot crosshair, shape and size 1:1, recolored so the lines are solid white
+/// Screenshot mode's pointer: macOS's own screenshot crosshair, shape and size 1:1, recolored so the lines are solid green
 /// with a thin dark edge. The original ships inside HIServices; if a future macOS moves it, zShot uses the standard crosshair.
 @MainActor
 enum ScreenshotCursor {
     static let shared: NSCursor = load() ?? .crosshair
+    /// The color of every pointer's lines, in sRGB so its components can be written straight into pixels.
+    static let lineColor: NSColor = NSColor.systemGreen.usingColorSpace(.sRGB) ?? NSColor(srgbRed: 0.2, green: 0.78, blue: 0.35, alpha: 1)
 
     private static func load() -> NSCursor? {
         let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
         guard let original = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")),
-              let white = whitened(original, scale: 2)
+              let painted = painted(original, scale: 2)
         else { return nil }
         let info = NSDictionary(contentsOf: folder.appendingPathComponent("info.plist"))
         let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? original.size.width / 2
         let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? original.size.height / 2
-        return NSCursor(image: white, hotSpot: NSPoint(x: hotX, y: hotY))
+        return NSCursor(image: painted, hotSpot: NSPoint(x: hotX, y: hotY))
     }
 
-    /// Paints the asset's lines solid white, keeping its exact shape, and adds a soft dark edge so it reads on light screens.
-    private static func whitened(_ image: NSImage, scale: CGFloat) -> NSImage? {
+    /// Paints the asset's lines solid in `lineColor`, keeping its exact shape, and adds a soft dark edge so it reads on light screens.
+    private static func painted(_ image: NSImage, scale: CGFloat) -> NSImage? {
         let width = Int((image.size.width * scale).rounded())
         let height = Int((image.size.height * scale).rounded())
         guard width > 0, height > 0,
@@ -693,13 +699,16 @@ enum ScreenshotCursor {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
         image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
         NSGraphicsContext.restoreGraphicsState()
+        let red = lineColor.redComponent
+        let green = lineColor.greenComponent
+        let blue = lineColor.blueComponent
         for offset in stride(from: 0, to: width * height * 4, by: 4) {
-            // The lines are dark gray at about 85% opacity. Make them solid, and white (premultiplied: color equals alpha).
-            let alpha = UInt8(min(255, Int(pixels[offset + 3]) * 3 / 2))
-            pixels[offset] = alpha
-            pixels[offset + 1] = alpha
-            pixels[offset + 2] = alpha
-            pixels[offset + 3] = alpha
+            // The lines are dark gray at about 85% opacity. Make them solid, in the line color (premultiplied by alpha).
+            let alpha = CGFloat(min(255, Int(pixels[offset + 3]) * 3 / 2))
+            pixels[offset] = UInt8((alpha * red).rounded())
+            pixels[offset + 1] = UInt8((alpha * green).rounded())
+            pixels[offset + 2] = UInt8((alpha * blue).rounded())
+            pixels[offset + 3] = UInt8(alpha)
         }
         guard let lines = context.makeImage(),
               let edged = CGContext(
