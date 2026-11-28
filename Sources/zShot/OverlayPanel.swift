@@ -566,18 +566,43 @@ private final class CanvasView: NSView {
     }
 }
 
-/// Screenshot mode's pointer: the exact crosshair macOS's own screenshot tool shows. It ships inside HIServices;
-/// if a future macOS moves it, zShot falls back to the standard crosshair.
+/// Screenshot mode's pointer: macOS's own screenshot crosshair, shape and size 1:1, recolored so the lines are white
+/// with a thin dark edge. The original ships inside HIServices; if a future macOS moves it, zShot uses the standard crosshair.
 @MainActor
 enum ScreenshotCursor {
     static let shared: NSCursor = load() ?? .crosshair
 
     private static func load() -> NSCursor? {
         let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
-        guard let image = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")) else { return nil }
+        guard let original = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")),
+              let white = inverted(original, scale: 2)
+        else { return nil }
         let info = NSDictionary(contentsOf: folder.appendingPathComponent("info.plist"))
-        let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.width / 2
-        let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.height / 2
-        return NSCursor(image: image, hotSpot: NSPoint(x: hotX, y: hotY))
+        let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? original.size.width / 2
+        let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? original.size.height / 2
+        return NSCursor(image: white, hotSpot: NSPoint(x: hotX, y: hotY))
+    }
+
+    /// Swaps dark and light while keeping transparency, so dark lines with a light edge become light lines with a dark edge.
+    private static func inverted(_ image: NSImage, scale: CGFloat) -> NSImage? {
+        let width = Int((image.size.width * scale).rounded())
+        let height = Int((image.size.height * scale).rounded())
+        guard width > 0, height > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let pixels = context.data?.bindMemory(to: UInt8.self, capacity: width * height * 4)
+        else { return nil }
+        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        for offset in stride(from: 0, to: width * height * 4, by: 4) {
+            let alpha = pixels[offset + 3]
+            for channel in 0..<3 {
+                pixels[offset + channel] = alpha &- pixels[offset + channel]
+            }
+        }
+        guard let result = context.makeImage() else { return nil }
+        return NSImage(cgImage: result, size: image.size)
     }
 }
