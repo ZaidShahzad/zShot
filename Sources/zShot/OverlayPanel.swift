@@ -635,7 +635,7 @@ private final class HandlesView: NSView {
         for dot in dots {
             dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
             dot.cornerRadius = size / 2
-            dot.backgroundColor = NSColor.white.cgColor
+            dot.backgroundColor = OverlayStyle.handle.cgColor
             dot.borderWidth = 1
             dot.borderColor = NSColor.black.withAlphaComponent(0.25).cgColor
             dot.shadowColor = NSColor.black.cgColor
@@ -813,4 +813,6 @@ enum ToolCursor {
 /// One color for Screenshot mode's outlines and pointers, so they always match.
 enum OverlayStyle {
     static let accent = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+    /// The resize handles.
+    static let handle = NSColor.systemGreen
 }
