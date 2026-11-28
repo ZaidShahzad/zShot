@@ -592,10 +592,13 @@ enum ScreenshotCursor {
               let context = CGContext(
                   data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-              let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let pixels = context.data?.bindMemory(to: UInt8.self, capacity: width * height * 4)
         else { return nil }
-        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        // Drawing through AppKit renders the PDF as vectors at full resolution.
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
         for offset in stride(from: 0, to: width * height * 4, by: 4) {
             let alpha = pixels[offset + 3]
             for channel in 0..<3 {
