@@ -35,6 +35,8 @@ public struct ScreenshotSession: Sendable {
     public static let dragThreshold: CGFloat = 4
     /// How close to a resize handle's center a press grabs it.
     public static let handleRadius: CGFloat = 8
+    /// How far a handle's center must sit from the usable area's edge for the whole handle to show.
+    public static let handleClearance: CGFloat = 6
 
     public let displays: [CGRect]
     /// Front to back.
@@ -89,8 +91,10 @@ public struct ScreenshotSession: Sendable {
             return shared.isNull ? 0 : shared.width * shared.height
         }
         guard let area = handleArea.max(by: { overlap($0) < overlap($1) }), overlap(area) > 0 else { return rect }
-        let reach = Self.handleRadius
-        let inset = reach + 1
+        // Handles straddle the outline. Only where that would put part of one off the usable area is the edge pulled in,
+        // just far enough for the handle to show whole.
+        let reach = Self.handleClearance
+        let inset = reach
         var minX = rect.minX, maxX = rect.maxX, minY = rect.minY, maxY = rect.maxY
         if minX < area.minX + reach { minX = area.minX + inset }
         if maxX > area.maxX - reach { maxX = area.maxX - inset }

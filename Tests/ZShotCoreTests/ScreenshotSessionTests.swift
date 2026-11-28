@@ -397,7 +397,7 @@ private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
     session.handleArea = [usableMain]
     let selection = CGRect(x: 200, y: 20, width: 400, height: 300)
     let layout = session.handleLayout(for: selection)
-    #expect(layout == CGRect(x: 200, y: 79, width: 400, height: 241))
+    #expect(layout == CGRect(x: 200, y: 76, width: 400, height: 244))
     for handle in SelectionHandle.allCases {
         #expect(usableMain.contains(handle.point(in: layout)))
     }
@@ -412,7 +412,7 @@ private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
     #expect(session.activeHandle == .bottom)
     _ = session.handle(.mouseDragged(CGPoint(x: 401, y: 150)))
     _ = session.handle(.mouseUp(CGPoint(x: 401, y: 150)))
-    #expect(selected(session) == CGRect(x: 200, y: 149, width: 400, height: 171))
+    #expect(selected(session) == CGRect(x: 200, y: 146, width: 400, height: 174))
 }
 
 @Test func handlesOfAWindowPokingOntoTheNextDisplayStayInsideItsOwnDisplay() {
@@ -422,9 +422,9 @@ private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
     // Covers the whole main display and pokes 20 pt onto the side display, like a maximized window behind the Dock.
     let window = CGRect(x: 0, y: 0, width: 1460, height: 900)
     let layout = session.handleLayout(for: window)
-    let radius = ScreenshotSession.handleRadius
+    let clearance = ScreenshotSession.handleClearance - 1
     for handle in SelectionHandle.allCases {
         let point = handle.point(in: layout)
-        #expect(usableMain.insetBy(dx: radius, dy: radius).contains(point))
+        #expect(usableMain.insetBy(dx: clearance, dy: clearance).contains(point))
     }
 }

@@ -625,24 +625,27 @@ private final class CanvasView: NSView {
 /// The eight resize handles of the Selection, or of the hovered window or display before there is one.
 /// Each display draws the part of each handle that falls on it.
 private final class HandlesView: NSView {
-    private static let diameter: CGFloat = 9
+    /// Corner handles are circles; edge handles are pills lying along their edge. White with a thin accent border.
+    private static let cornerSize = CGSize(width: 9, height: 9)
+    private static let edgeLength: CGFloat = 18
+    private static let edgeThickness: CGFloat = 7
     private let dots: [CALayer] = SelectionHandle.allCases.map { _ in CALayer() }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        let size = Self.diameter
-        for dot in dots {
-            dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
-            dot.cornerRadius = size / 2
-            dot.backgroundColor = OverlayStyle.handle.cgColor
+        for (handle, dot) in zip(SelectionHandle.allCases, dots) {
+            let size = Self.size(of: handle)
+            dot.bounds = CGRect(origin: .zero, size: size)
+            dot.cornerRadius = min(size.width, size.height) / 2
+            dot.backgroundColor = NSColor.white.cgColor
             dot.borderWidth = 1
-            dot.borderColor = NSColor.black.withAlphaComponent(0.25).cgColor
+            dot.borderColor = OverlayStyle.handle.cgColor
             dot.shadowColor = NSColor.black.cgColor
             dot.shadowOpacity = 0.3
             dot.shadowRadius = 1.5
             dot.shadowOffset = CGSize(width: 0, height: -0.5)
-            dot.shadowPath = CGPath(ellipseIn: dot.bounds, transform: nil)
+            dot.shadowPath = CGPath(roundedRect: dot.bounds, cornerWidth: dot.cornerRadius, cornerHeight: dot.cornerRadius, transform: nil)
             dot.isHidden = true
             layer?.addSublayer(dot)
         }
@@ -654,8 +657,16 @@ private final class HandlesView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    private static func size(of handle: SelectionHandle) -> CGSize {
+        switch handle {
+        case .top, .bottom: return CGSize(width: edgeLength, height: edgeThickness)
+        case .left, .right: return CGSize(width: edgeThickness, height: edgeLength)
+        case .topLeft, .topRight, .bottomLeft, .bottomRight: return cornerSize
+        }
+    }
+
     /// `rect` is the session's handle layout in this view's coordinates; nil hides every handle.
-    /// Call inside a transaction with actions disabled.
+    /// Handles sit centered on the outline, straddling it. Call inside a transaction with actions disabled.
     func update(rect: CGRect?) {
         for (handle, dot) in zip(SelectionHandle.allCases, dots) {
             guard let rect, handle.isAvailable(on: rect, radius: ScreenshotSession.handleRadius) else {
