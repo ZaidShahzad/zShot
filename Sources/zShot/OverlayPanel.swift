@@ -379,9 +379,9 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered or selected window: rounded like a window, outlined in dotted green, cross-fades to the next window.
+        /// The hovered or selected window: rounded like a window, outlined in dotted in the accent color, cross-fades to the next window.
         case window(WindowTarget)
-        /// An area being dragged out, or a dragged or full-display Selection: square, outlined in dotted green, follows the mouse exactly.
+        /// An area being dragged out, or a dragged or full-display Selection: square, outlined in dotted in the accent color, follows the mouse exactly.
         case area(CGRect)
     }
 
@@ -486,7 +486,7 @@ private final class ChromeView: NSView {
             if !rect.intersection(bounds).isEmpty {
                 borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             }
-            border.strokeColor = NSColor.systemGreen.cgColor
+            border.strokeColor = OverlayStyle.accent.cgColor
             border.lineWidth = width
             // Short square dashes with gaps as wide.
             border.lineDashPattern = [3, 3]
@@ -504,7 +504,7 @@ private final class ChromeView: NSView {
             let width: CGFloat = 1
             area = rect
             borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
-            border.strokeColor = NSColor.systemGreen.cgColor
+            border.strokeColor = OverlayStyle.accent.cgColor
             border.lineWidth = width
             border.lineDashPattern = [3, 3]
         case nil:
@@ -692,13 +692,13 @@ enum ResizeCursor {
     }
 }
 
-/// Screenshot mode's pointer: macOS's own screenshot crosshair, shape and size 1:1, recolored so the lines are solid green
+/// Screenshot mode's pointer: macOS's own screenshot crosshair, shape and size 1:1, recolored so the lines are solid accent color
 /// with a thin dark edge. The original ships inside HIServices; if a future macOS moves it, zShot uses the standard crosshair.
 @MainActor
 enum ScreenshotCursor {
     static let shared: NSCursor = load() ?? .crosshair
     /// The color of every pointer's lines, in sRGB so its components can be written straight into pixels.
-    static let lineColor: NSColor = NSColor.systemGreen.usingColorSpace(.sRGB) ?? NSColor(srgbRed: 0.2, green: 0.78, blue: 0.35, alpha: 1)
+    static let lineColor: NSColor = OverlayStyle.accent
 
     private static func load() -> NSCursor? {
         let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
@@ -808,4 +808,9 @@ enum ToolCursor {
         }
         return NSCursor(image: NSImage(cgImage: image, size: size), hotSpot: NSPoint(x: center.x, y: size.height - center.y))
     }
+}
+
+/// One color for Screenshot mode's outlines and pointers, so they always match.
+enum OverlayStyle {
+    static let accent = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
 }
