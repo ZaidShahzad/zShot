@@ -96,7 +96,12 @@ final class OverlayPanel: NSPanel {
         var selectingSize: CGSize?
         switch session.phase {
         case .choosing(let hover), .pressing(_, let hover):
-            if let hover { hole = .window(hover.offsetBy(dx: -origin.x, dy: -origin.y)) }
+            if let hover {
+                hole = .window(hover.offsetBy(dx: -origin.x, dy: -origin.y))
+            } else if session.displayUnderMouse == screenFrame {
+                // Over the desktop a click takes the whole display, so the whole display lights up.
+                hole = .area(backdrop.bounds)
+            }
         case .selecting(let anchor, let current):
             let rect = Geometry.rect(from: anchor, to: current)
             hole = .area(local(rect))

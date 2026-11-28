@@ -147,10 +147,22 @@ private func annotatingSession() -> ScreenshotSession {
     #expect(selected(session) == CGRect(x: 150, y: 150, width: 10, height: 10))
 }
 
-@Test func clickOnNothingKeepsChoosing() {
+@Test func clickOnTheDesktopSelectsThatDisplay() {
     var session = makeSession()
     drag(&session, from: CGPoint(x: 1000, y: 800), to: CGPoint(x: 1000, y: 800))
+    #expect(selected(session) == mainDisplay)
+    #expect(session.selectedWindow == nil)
+
+    var side = makeSession()
+    drag(&side, from: CGPoint(x: 2000, y: 500), to: CGPoint(x: 2002, y: 501))
+    #expect(selected(side) == sideDisplay)
+}
+
+@Test func desktopHoverPointsAtTheDisplayUnderTheMouse() {
+    var session = makeSession()
+    _ = session.handle(.mouseMoved(CGPoint(x: 2000, y: 500)))
     #expect(session.phase == .choosing(hover: nil))
+    #expect(session.displayUnderMouse == sideDisplay)
 }
 
 @Test func windowsArrivingLaterAreClippedAndHovered() {

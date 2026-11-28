@@ -58,6 +58,9 @@ public struct ScreenshotSession: Sendable {
         return history.annotations + [draft.annotation(constrained: shiftDown)]
     }
 
+    /// The display a click selects when no window is under the pointer.
+    public var displayUnderMouse: CGRect? { display(at: mouse) }
+
     public mutating func setWindows(_ windows: [WindowTarget]) {
         self.windows = windows
         if case .choosing = phase {
@@ -120,8 +123,8 @@ public struct ScreenshotSession: Sendable {
         switch phase {
         case .pressing(_, let hover):
             selectedWindow = hover
-            if let hover {
-                phase = .annotating(selection: hover.frame, draft: nil)
+            if let selection = hover?.frame ?? display(at: point) {
+                phase = .annotating(selection: selection, draft: nil)
             } else {
                 phase = .choosing(hover: nil)
             }
@@ -156,7 +159,7 @@ public struct ScreenshotSession: Sendable {
             phase = .annotating(selection: selection, draft: nil)
             return .finish(selection: selection, annotations: history.annotations)
         case .fullDisplay:
-            if let display = displays.first(where: { $0.contains(mouse) }) {
+            if let display = displayUnderMouse {
                 selectedWindow = nil
                 phase = .annotating(selection: display, draft: nil)
             }
@@ -175,6 +178,10 @@ public struct ScreenshotSession: Sendable {
         if !annotation.shape.isDegenerate {
             history.add(annotation)
         }
+    }
+
+    private func display(at point: CGPoint) -> CGRect? {
+        displays.first { $0.contains(point) }
     }
 
     /// Only the visible part counts, so a point over the Dock or a window in front never hovers the window behind it.
