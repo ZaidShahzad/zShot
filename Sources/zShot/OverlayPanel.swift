@@ -35,10 +35,14 @@ final class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         setFrame(screen.frame, display: false)
 
-        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         sizeLabel.textColor = .white
-        sizeLabel.drawsBackground = true
-        sizeLabel.backgroundColor = NSColor.black.withAlphaComponent(0.7)
+        sizeLabel.alignment = .center
+        sizeLabel.wantsLayer = true
+        sizeLabel.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.72).cgColor
+        sizeLabel.layer?.cornerRadius = 6
+        sizeLabel.layer?.borderWidth = 1
+        sizeLabel.layer?.borderColor = ScreenshotCursor.green.withAlphaComponent(0.55).cgColor
         sizeLabel.isHidden = true
 
         chrome.autoresizingMask = [.width, .height]
@@ -121,10 +125,21 @@ final class OverlayPanel: NSPanel {
             canvas.isHidden = true
         }
 
-        if let size = selectingSize, screenFrame.contains(session.mouse) {
+        let readout: String?
+        switch session.phase {
+        case .choosing, .pressing:
+            // Like macOS's own screenshot pointer: the position in points from the display's top-left corner.
+            readout = "\(Int((session.mouse.x - origin.x).rounded(.down)))  \(Int((screenFrame.maxY - session.mouse.y).rounded(.down)))"
+        case .selecting:
             let scale = displayScreen.backingScaleFactor
-            sizeLabel.stringValue = " \(Int((size.width * scale).rounded())) \u{00D7} \(Int((size.height * scale).rounded())) "
+            readout = selectingSize.map { "\(Int(($0.width * scale).rounded())) \u{00D7} \(Int(($0.height * scale).rounded()))" }
+        case .annotating:
+            readout = nil
+        }
+        if let readout, screenFrame.contains(session.mouse) {
+            sizeLabel.stringValue = readout
             sizeLabel.sizeToFit()
+            sizeLabel.setFrameSize(NSSize(width: sizeLabel.frame.width + 12, height: sizeLabel.frame.height + 4))
             let mouse = CGPoint(x: session.mouse.x - origin.x, y: session.mouse.y - origin.y)
             var labelOrigin = CGPoint(x: mouse.x + 12, y: mouse.y - 12 - sizeLabel.frame.height)
             labelOrigin.x = min(labelOrigin.x, backdrop.bounds.maxX - sizeLabel.frame.width)
@@ -312,7 +327,7 @@ private final class LiftedView: NSView {
 /// A window hole also stays dimmed, and unbordered, where other windows cover it.
 private final class ChromeView: NSView {
     enum Hole: Equatable {
-        /// The hovered or selected window: rounded like a window, outlined in green, cross-fades to the next window.
+        /// The hovered or selected window: rounded like a window, outlined in white, cross-fades to the next window.
         case window(WindowTarget)
         /// An area being dragged out, or a dragged or full-display Selection: square, bordered in white, follows the mouse exactly.
         case area(CGRect)
@@ -415,17 +430,12 @@ private final class ChromeView: NSView {
             let outline = Self.roundedRect(rect, radius: Self.windowCornerRadius)
             dimPath.addPath(outline)
             shadowPath = outline
-            // Only the display the window is on draws its outline, so the glow never bleeds onto a neighboring display.
+            // Only the display the window is on draws its outline, so its edge never shows on a neighboring display.
             if !rect.intersection(bounds).isEmpty {
                 borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             }
-            border.strokeColor = NSColor.systemGreen.cgColor
+            border.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
             border.lineWidth = width
-            // A soft green glow hugging the line gives it a clean, modern edge instead of a flat stroke.
-            border.shadowColor = NSColor.systemGreen.cgColor
-            border.shadowOpacity = 0.7
-            border.shadowRadius = 5
-            border.shadowOffset = .zero
             if !target.covered.isEmpty {
                 let covered = CGMutablePath()
                 covered.addRects(target.covered)
@@ -441,7 +451,6 @@ private final class ChromeView: NSView {
             borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
             border.strokeColor = NSColor.white.cgColor
             border.lineWidth = width
-            border.shadowOpacity = 0
         case nil:
             break
         }
@@ -557,18 +566,41 @@ private final class CanvasView: NSView {
     }
 }
 
-/// The pointer macOS's own screenshot tool shows when you can drag out an area. It ships inside HIServices;
-/// if a future macOS moves it, zShot falls back to the standard crosshair.
+/// Screenshot mode's pointer: zShot's green take on the crosshair macOS shows for Cmd+Shift+4.
 @MainActor
 enum ScreenshotCursor {
-    static let shared: NSCursor = load() ?? .crosshair
-
-    private static func load() -> NSCursor? {
-        let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
-        guard let image = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")) else { return nil }
-        let info = NSDictionary(contentsOf: folder.appendingPathComponent("info.plist"))
-        let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.width / 2
-        let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.height / 2
-        return NSCursor(image: image, hotSpot: NSPoint(x: hotX, y: hotY))
-    }
+    static let green = NSColor(srgbRed: 0.20, green: 0.84, blue: 0.42, alpha: 1)
+    /// A crisp green crosshair the size of macOS's own screenshot pointer (31 pt, hot spot in the middle).
+    static let shared: NSCursor = {
+        let side: CGFloat = 31
+        let greenColor = green.cgColor
+        let halo = NSColor.black.withAlphaComponent(0.55).cgColor
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let mid = rect.midX
+            let gap: CGFloat = 3.5
+            let arms: [(CGPoint, CGPoint)] = [
+                (CGPoint(x: mid, y: rect.minY + 1), CGPoint(x: mid, y: mid - gap)),
+                (CGPoint(x: mid, y: mid + gap), CGPoint(x: mid, y: rect.maxY - 1)),
+                (CGPoint(x: rect.minX + 1, y: mid), CGPoint(x: mid - gap, y: mid)),
+                (CGPoint(x: mid + gap, y: mid), CGPoint(x: rect.maxX - 1, y: mid)),
+            ]
+            context.setLineCap(.round)
+            // A dark halo under the green keeps the crosshair readable on light and dark screens.
+            for (width, color) in [(CGFloat(3.5), halo), (CGFloat(1.5), greenColor)] {
+                context.setLineWidth(width)
+                context.setStrokeColor(color)
+                for (from, to) in arms {
+                    context.move(to: from)
+                    context.addLine(to: to)
+                }
+                context.strokePath()
+            }
+            let dot = CGRect(x: mid - 1.25, y: mid - 1.25, width: 2.5, height: 2.5)
+            context.setFillColor(greenColor)
+            context.fillEllipse(in: dot)
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: 15.5, y: 15.5))
+    }()
 }
