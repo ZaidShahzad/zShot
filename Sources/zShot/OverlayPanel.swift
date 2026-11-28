@@ -19,6 +19,9 @@ final class OverlayPanel: NSPanel {
     private var mouseDownInToolbar = false
     /// The rect the handles were last laid out on, in global points, so the pointer can turn into a resize pointer over them.
     private var renderedHandles: CGRect?
+    /// The Selection and Tool as last rendered, so the pointer over the Selection shows what a press will draw.
+    private var renderedSelection: CGRect?
+    private var renderedTool = Tool.arrow
     /// The handle being dragged, as last rendered.
     private var draggedHandle: SelectionHandle?
 
@@ -131,6 +134,10 @@ final class OverlayPanel: NSPanel {
         CATransaction.commit()
         renderedHandles = handleRect
         draggedHandle = session.activeHandle
+        // A new Selection or Tool changes the pointer without the mouse moving.
+        let pointerChanged = selection != nil && (renderedSelection == nil || session.style.tool != renderedTool)
+        renderedSelection = selection
+        renderedTool = session.style.tool
 
         if let selection {
             let frame = local(selection).intersection(backdrop.bounds)
@@ -173,6 +180,10 @@ final class OverlayPanel: NSPanel {
             toolStrip.isHidden = false
         } else {
             toolStrip.isHidden = true
+        }
+
+        if pointerChanged && screenFrame.contains(session.mouse) {
+            updatePointer(at: session.mouse)
         }
     }
 
@@ -221,15 +232,7 @@ final class OverlayPanel: NSPanel {
         case .mouseMoved:
             if !isKeyWindow { makeKey() }
             let point = globalPoint(event)
-            // Set on every move: zShot never activates, so cursor rects alone don't reliably hold.
-            if !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow) {
-                NSCursor.arrow.set()
-            } else if let rect = renderedHandles,
-                      let handle = SelectionHandle.hit(point, in: rect, radius: ScreenshotSession.handleRadius) {
-                ResizeCursor.cursor(for: handle).set()
-            } else {
-                ScreenshotCursor.shared.set()
-            }
+            updatePointer(at: point)
             onInput?(.mouseMoved(point))
         case .flagsChanged:
             onInput?(.shiftChanged(event.modifierFlags.contains(.shift)))
@@ -239,6 +242,20 @@ final class OverlayPanel: NSPanel {
             }
         default:
             super.sendEvent(event)
+        }
+    }
+
+    /// Set on every move: zShot never activates, so cursor rects alone don't reliably hold. `point` is in global points.
+    private func updatePointer(at point: CGPoint) {
+        if !toolStrip.isHidden && toolStrip.frame.contains(convertPoint(fromScreen: point)) {
+            NSCursor.arrow.set()
+        } else if let rect = renderedHandles,
+                  let handle = SelectionHandle.hit(point, in: rect, radius: ScreenshotSession.handleRadius) {
+            ResizeCursor.cursor(for: handle).set()
+        } else if let selection = renderedSelection, selection.contains(point) {
+            ToolCursor.cursor(for: renderedTool).set()
+        } else {
+            ScreenshotCursor.shared.set()
         }
     }
 
@@ -710,14 +727,74 @@ enum ScreenshotCursor {
             pixels[offset + 2] = UInt8((alpha * blue).rounded())
             pixels[offset + 3] = UInt8(alpha)
         }
-        guard let lines = context.makeImage(),
-              let edged = CGContext(
-                  data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
-                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        edged.setShadow(offset: .zero, blur: 1.5 * scale, color: NSColor.black.withAlphaComponent(0.9).cgColor)
-        edged.draw(lines, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let result = edged.makeImage() else { return nil }
+        guard let lines = context.makeImage(), let result = edged(lines, scale: scale) else { return nil }
         return NSImage(cgImage: result, size: image.size)
+    }
+
+    /// `lines` with a soft dark edge around them, so they read on light screens. `scale` is pixels per point.
+    static func edged(_ lines: CGImage, scale: CGFloat) -> CGImage? {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil, width: lines.width, height: lines.height, bitsPerComponent: 8, bytesPerRow: lines.width * 4,
+                  space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.setShadow(offset: .zero, blur: 1.5 * scale, color: NSColor.black.withAlphaComponent(0.9).cgColor)
+        context.draw(lines, in: CGRect(x: 0, y: 0, width: lines.width, height: lines.height))
+        return context.makeImage()
+    }
+}
+
+/// The pointer over the Selection: a small crosshair at the hot spot, so a mark starts exactly where it points, with the
+/// selected Tool's symbol to its lower right. Painted like `ScreenshotCursor`. Built once per Tool, on first use.
+@MainActor
+enum ToolCursor {
+    private static let cursors: [Tool: NSCursor] = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, make($0)) })
+
+    static func cursor(for tool: Tool) -> NSCursor {
+        cursors[tool] ?? ScreenshotCursor.shared
+    }
+
+    private static func make(_ tool: Tool) -> NSCursor {
+        let size = CGSize(width: 36, height: 36)
+        let scale: CGFloat = 2
+        // In drawing coordinates, from the bottom-left. NSCursor counts its hot spot from the top-left.
+        let center = CGPoint(x: 8, y: 28)
+        let arm: CGFloat = 6
+        let symbolBox = CGRect(x: 14, y: 1, width: 21, height: 21)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8,
+                  bytesPerRow: Int(size.width * scale) * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return ScreenshotCursor.shared }
+        context.scaleBy(x: scale, y: scale)
+
+        // 1 pt lines on whole points land on whole pixels, so the crosshair stays crisp.
+        context.setLineWidth(1)
+        context.move(to: CGPoint(x: center.x - arm, y: center.y))
+        context.addLine(to: CGPoint(x: center.x + arm, y: center.y))
+        context.move(to: CGPoint(x: center.x, y: center.y - arm))
+        context.addLine(to: CGPoint(x: center.x, y: center.y + arm))
+        context.strokePath()
+
+        if let symbol = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)) {
+            let symbolSize = symbol.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            symbol.draw(in: CGRect(
+                x: symbolBox.midX - symbolSize.width / 2, y: symbolBox.midY - symbolSize.height / 2,
+                width: symbolSize.width, height: symbolSize.height))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        // Everything drawn so far becomes solid line color, keeping its shape.
+        context.setBlendMode(.sourceIn)
+        context.setFillColor(ScreenshotCursor.lineColor.cgColor)
+        context.fill(CGRect(origin: .zero, size: size))
+
+        guard let shape = context.makeImage(), let image = ScreenshotCursor.edged(shape, scale: scale) else {
+            return ScreenshotCursor.shared
+        }
+        return NSCursor(image: NSImage(cgImage: image, size: size), hotSpot: NSPoint(x: center.x, y: size.height - center.y))
     }
 }

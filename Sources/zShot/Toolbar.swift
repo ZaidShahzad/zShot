@@ -137,7 +137,8 @@ private final class ToolbarButton: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-private extension Tool {
+extension Tool {
+    /// The SF Symbol for the Tool, shared by its Toolbar button and its pointer.
     var symbolName: String {
         switch self {
         case .arrow: return "arrow.up.right"
