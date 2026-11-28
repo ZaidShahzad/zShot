@@ -418,6 +418,11 @@ private final class ChromeView: NSView {
             borderPath = Self.roundedRect(rect.insetBy(dx: width / 2, dy: width / 2), radius: Self.windowCornerRadius - width / 2)
             border.strokeColor = NSColor.systemGreen.cgColor
             border.lineWidth = width
+            // A soft green glow hugging the line gives it a clean, modern edge instead of a flat stroke.
+            border.shadowColor = NSColor.systemGreen.cgColor
+            border.shadowOpacity = 0.7
+            border.shadowRadius = 5
+            border.shadowOffset = .zero
             if !target.covered.isEmpty {
                 let covered = CGMutablePath()
                 covered.addRects(target.covered)
@@ -433,6 +438,7 @@ private final class ChromeView: NSView {
             borderPath = CGPath(rect: rect.insetBy(dx: width / 2, dy: width / 2), transform: nil)
             border.strokeColor = NSColor.white.cgColor
             border.lineWidth = width
+            border.shadowOpacity = 0
         case nil:
             break
         }
