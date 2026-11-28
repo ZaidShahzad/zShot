@@ -5,7 +5,7 @@ import AppKit
 final class ThumbnailPanel: NSPanel {
     private static let maxSize = NSSize(width: 240, height: 160)
     private static let margin: CGFloat = 16
-    private static let visibleSeconds: UInt64 = 5
+    private static let visibleNanoseconds: UInt64 = 2_500_000_000
 
     private let thumbnailView = ThumbnailView(frame: .zero)
     private var dismissTask: Task<Void, Never>?
@@ -65,8 +65,10 @@ final class ThumbnailPanel: NSPanel {
         dismissTask = nil
         guard isVisible else { return }
         let shown = generation
+        // Slides toward the screen edge while fading, like it is tucked away rather than switched off.
         NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0.15
+        NSAnimationContext.current.duration = 0.18
+        NSAnimationContext.current.timingFunction = CAMediaTimingFunction(name: .easeIn)
         NSAnimationContext.current.completionHandler = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.generation == shown else { return }
@@ -76,13 +78,14 @@ final class ThumbnailPanel: NSPanel {
             }
         }
         animator().alphaValue = 0
+        animator().setFrame(frame.offsetBy(dx: 28, dy: 0), display: true)
         NSAnimationContext.endGrouping()
     }
 
     private func scheduleDismiss() {
         dismissTask?.cancel()
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.visibleSeconds * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: Self.visibleNanoseconds)
             guard !Task.isCancelled else { return }
             self?.dismiss()
         }
