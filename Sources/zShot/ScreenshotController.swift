@@ -65,7 +65,7 @@ final class ScreenshotController {
             panel.show()
         }
         (panels.first(where: { $0.screenFrame.contains(mouse) }) ?? fallbackPanel).makeKey()
-        NSCursor.crosshair.set()
+        ScreenshotCursor.shared.set()
         DispatchQueue.main.async {
             Log.timing("hotkey\u{2192}shown", since: hotKeyTime)
         }

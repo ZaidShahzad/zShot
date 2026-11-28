@@ -185,6 +185,12 @@ final class OverlayPanel: NSPanel {
             mouseDownInToolbar = false
         case .mouseMoved:
             if !isKeyWindow { makeKey() }
+            // Set on every move: zShot never activates, so cursor rects alone don't reliably hold.
+            if !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow) {
+                NSCursor.arrow.set()
+            } else {
+                ScreenshotCursor.shared.set()
+            }
             onInput?(.mouseMoved(globalPoint(event)))
         case .flagsChanged:
             onInput?(.shiftChanged(event.modifierFlags.contains(.shift)))
@@ -247,7 +253,7 @@ private final class BackdropView: NSView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        NSCursor.crosshair.set()
+        ScreenshotCursor.shared.set()
     }
 }
 
@@ -537,5 +543,21 @@ private final class CanvasView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.translateBy(x: -globalOrigin.x, y: -globalOrigin.y)
         AnnotationRenderer.draw(annotations, in: context)
+    }
+}
+
+/// The pointer macOS's own screenshot tool shows when you can drag out an area. It ships inside HIServices;
+/// if a future macOS moves it, zShot falls back to the standard crosshair.
+@MainActor
+enum ScreenshotCursor {
+    static let shared: NSCursor = load() ?? .crosshair
+
+    private static func load() -> NSCursor? {
+        let folder = URL(fileURLWithPath: "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors/screenshotselection")
+        guard let image = NSImage(contentsOf: folder.appendingPathComponent("cursor.pdf")) else { return nil }
+        let info = NSDictionary(contentsOf: folder.appendingPathComponent("info.plist"))
+        let hotX = (info?["hotx"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.width / 2
+        let hotY = (info?["hoty"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? image.size.height / 2
+        return NSCursor(image: image, hotSpot: NSPoint(x: hotX, y: hotY))
     }
 }
