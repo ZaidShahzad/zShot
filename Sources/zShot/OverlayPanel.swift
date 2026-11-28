@@ -772,8 +772,8 @@ enum ScreenshotCursor {
     }
 }
 
-/// The pointer over the Selection: a small crosshair at the hot spot, so a mark starts exactly where it points, with the
-/// selected Tool's symbol to its lower right. Painted like `ScreenshotCursor`. Built once per Tool, on first use.
+/// The pointer over the Selection: the standard arrow, tip as the hot spot, with the selected Tool's symbol small and gray
+/// at its top right. Built once per Tool, on first use.
 @MainActor
 enum ToolCursor {
     private static let cursors: [Tool: NSCursor] = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, make($0)) })
@@ -783,47 +783,26 @@ enum ToolCursor {
     }
 
     private static func make(_ tool: Tool) -> NSCursor {
-        let size = CGSize(width: 36, height: 36)
-        let scale: CGFloat = 2
-        // In drawing coordinates, from the bottom-left. NSCursor counts its hot spot from the top-left.
-        let center = CGPoint(x: 8, y: 28)
-        let arm: CGFloat = 6
-        let symbolBox = CGRect(x: 14, y: 1, width: 21, height: 21)
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(
-                  data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8,
-                  bytesPerRow: Int(size.width * scale) * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return ScreenshotCursor.shared }
-        context.scaleBy(x: scale, y: scale)
-
-        // 1 pt lines on whole points land on whole pixels, so the crosshair stays crisp.
-        context.setLineWidth(1)
-        context.move(to: CGPoint(x: center.x - arm, y: center.y))
-        context.addLine(to: CGPoint(x: center.x + arm, y: center.y))
-        context.move(to: CGPoint(x: center.x, y: center.y - arm))
-        context.addLine(to: CGPoint(x: center.x, y: center.y + arm))
-        context.strokePath()
-
-        if let symbol = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)) {
-            let symbolSize = symbol.size
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-            symbol.draw(in: CGRect(
-                x: symbolBox.midX - symbolSize.width / 2, y: symbolBox.midY - symbolSize.height / 2,
-                width: symbolSize.width, height: symbolSize.height))
-            NSGraphicsContext.restoreGraphicsState()
+        let arrow = NSCursor.arrow
+        let arrowSize = arrow.image.size
+        let badge: CGFloat = 12
+        // Room to the right for the badge; the arrow keeps the top-left corner, so its hot spot stays where it was.
+        let size = CGSize(width: arrowSize.width + badge + 2, height: arrowSize.height)
+        let image = NSImage(size: size, flipped: false) { _ in
+            arrow.image.draw(in: CGRect(x: 0, y: size.height - arrowSize.height, width: arrowSize.width, height: arrowSize.height))
+            let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor.systemGray]))
+            if let symbol = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration) {
+                let symbolSize = symbol.size
+                let box = CGRect(x: size.width - badge, y: size.height - badge, width: badge, height: badge)
+                symbol.draw(in: CGRect(
+                    x: box.midX - symbolSize.width / 2, y: box.midY - symbolSize.height / 2,
+                    width: symbolSize.width, height: symbolSize.height))
+            }
+            return true
         }
-
-        // Everything drawn so far becomes solid line color, keeping its shape.
-        context.setBlendMode(.sourceIn)
-        context.setFillColor(ScreenshotCursor.lineColor.cgColor)
-        context.fill(CGRect(origin: .zero, size: size))
-
-        guard let shape = context.makeImage(), let image = ScreenshotCursor.edged(shape, scale: scale) else {
-            return ScreenshotCursor.shared
-        }
-        return NSCursor(image: NSImage(cgImage: image, size: size), hotSpot: NSPoint(x: center.x, y: size.height - center.y))
+        return NSCursor(image: image, hotSpot: arrow.hotSpot)
     }
 }
 
