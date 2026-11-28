@@ -24,13 +24,16 @@ public struct WindowTarget: Equatable, Sendable {
     /// `visible` and `covered` are disjoint and together tile `frame`.
     public let visible: [CGRect]
     public let covered: [CGRect]
+    /// Frames of the windows and screen-edge strips in front of it near its edges. Its shadow must not fall on these.
+    public let inFront: [CGRect]
 
     public func offsetBy(dx: CGFloat, dy: CGFloat) -> WindowTarget {
         WindowTarget(
             id: id,
             frame: frame.offsetBy(dx: dx, dy: dy),
             visible: visible.map { $0.offsetBy(dx: dx, dy: dy) },
-            covered: covered.map { $0.offsetBy(dx: dx, dy: dy) })
+            covered: covered.map { $0.offsetBy(dx: dx, dy: dy) },
+            inFront: inFront.map { $0.offsetBy(dx: dx, dy: dy) })
     }
 
     /// The window as it looks once lifted in front of every other window: only `edges`, the menu bar and Dock strips, still cover it.
@@ -65,13 +68,19 @@ public enum WindowRegions {
         return targets
     }
 
+    /// How far around a window its shadow can reach, so windows that far away count as in front of its edges.
+    public static let shadowReach: CGFloat = 40
+
     static func target(id: UInt32, frame: CGRect, under occluders: [CGRect]) -> WindowTarget {
         let visible = subtract(occluders, from: frame)
-        return WindowTarget(id: id, frame: frame, visible: visible, covered: subtract(visible, from: frame))
+        let near = frame.insetBy(dx: -shadowReach, dy: -shadowReach)
+        return WindowTarget(
+            id: id, frame: frame, visible: visible, covered: subtract(visible, from: frame),
+            inFront: occluders.filter { $0.intersects(near) })
     }
 
     /// `rect` minus every rect in `cuts`, as disjoint rects.
-    static func subtract(_ cuts: [CGRect], from rect: CGRect) -> [CGRect] {
+    public static func subtract(_ cuts: [CGRect], from rect: CGRect) -> [CGRect] {
         cuts.reduce([rect]) { pieces, cut in pieces.flatMap { subtract(cut, from: $0) } }
     }
 

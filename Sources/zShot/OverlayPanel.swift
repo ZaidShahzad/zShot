@@ -332,7 +332,7 @@ private final class ChromeView: NSView {
     private let border = CAShapeLayer()
     /// Keeps a window's border to its visible parts.
     private let borderMask = CAShapeLayer()
-    /// A soft drop shadow around the highlighted window, like a raised window. `shadowMask` keeps it outside the window.
+    /// A soft drop shadow around the highlighted window, like a raised window. `shadowMask` keeps it on what lies behind the window.
     private let windowShadow = CAShapeLayer()
     private let shadowMask = CAShapeLayer()
     private var hole: Hole?
@@ -352,7 +352,6 @@ private final class ChromeView: NSView {
         windowShadow.shadowRadius = 14
         windowShadow.shadowOffset = CGSize(width: 0, height: -6)
         windowShadow.isHidden = true
-        shadowMask.fillRule = .evenOdd
         windowShadow.mask = shadowMask
         layOutShapes()
         layer?.addSublayer(dim)
@@ -456,19 +455,23 @@ private final class ChromeView: NSView {
         windowShadow.isHidden = shadowPath == nil
         windowShadow.path = shadowPath
         windowShadow.shadowPath = shadowPath
-        if let shadowPath {
+        if case .window(let target) = newHole {
+            // A shadow only falls on what is behind the window: never on the window itself,
+            // on windows in front of it, or on the Dock and menu bar.
+            let reach = WindowRegions.shadowReach
             let outside = CGMutablePath()
-            outside.addRect(bounds.insetBy(dx: -40, dy: -40))
-            outside.addPath(shadowPath)
+            outside.addRects(WindowRegions.subtract(
+                [target.frame] + target.inFront, from: bounds.insetBy(dx: -reach, dy: -reach)))
             shadowMask.path = outside
         }
 
         switch (previous, newHole) {
         case (.some(.window(_)), .some(.window(_))):
+            // Only the dimming fades. The old outline and shadow vanish at once, so nothing lingers on the last window.
+            border.removeAllAnimations()
+            windowShadow.removeAllAnimations()
             Self.crossFade(dim)
             Self.crossFade(coveredDim)
-            Self.crossFade(windowShadow)
-            Self.crossFade(border)
         case (_, .some(.window(_))):
             dim.removeAllAnimations()
             coveredDim.removeAllAnimations()
@@ -506,7 +509,7 @@ private final class ChromeView: NSView {
     private static func crossFade(_ layer: CALayer) {
         let transition = CATransition()
         transition.type = .fade
-        transition.duration = 0.07
+        transition.duration = 0.05
         transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
         layer.add(transition, forKey: kCATransition)
     }

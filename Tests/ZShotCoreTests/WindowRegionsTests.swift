@@ -95,3 +95,16 @@ private func appWindow(_ frame: CGRect) -> ScreenWindow {
         }
     }
 }
+
+@Test func windowsInFrontNearAWindowAreKnownSoItsShadowSkipsThem() throws {
+    let beside = CGRect(x: 860, y: 50, width: 200, height: 200)
+    let farAway = CGRect(x: 1200, y: 700, width: 200, height: 150)
+    let targets = WindowRegions.targets(
+        [appWindow(front), appWindow(beside), appWindow(farAway), appWindow(back)], displays: [display])
+    let backTarget = try #require(targets.first { $0.frame == back })
+    #expect(backTarget.inFront.contains(front))
+    #expect(backTarget.inFront.contains(beside))
+    #expect(!backTarget.inFront.contains(farAway))
+    let frontTarget = try #require(targets.first { $0.frame == front })
+    #expect(frontTarget.inFront.isEmpty)
+}
