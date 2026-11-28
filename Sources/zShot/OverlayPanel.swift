@@ -17,8 +17,8 @@ final class OverlayPanel: NSPanel {
     private let sizeLabel = NSTextField(labelWithString: "")
     private let toolStrip = Toolbar()
     private var mouseDownInToolbar = false
-    /// The Selection as last rendered, in global points, so the pointer can turn into a resize pointer over its handles.
-    private var renderedSelection: CGRect?
+    /// The rect the handles were last laid out on, in global points, so the pointer can turn into a resize pointer over them.
+    private var renderedHandles: CGRect?
     /// The handle being dragged, as last rendered.
     private var draggedHandle: SelectionHandle?
 
@@ -123,12 +123,13 @@ final class OverlayPanel: NSPanel {
             selection = rect
         }
 
+        let handleRect = session.handleTarget.map { session.handleLayout(for: $0) }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         chrome.update(hole: hole)
-        handles.update(selection: selection.map(local))
+        handles.update(rect: handleRect.map(local))
         CATransaction.commit()
-        renderedSelection = selection
+        renderedHandles = handleRect
         draggedHandle = session.activeHandle
 
         if let selection {
@@ -223,8 +224,8 @@ final class OverlayPanel: NSPanel {
             // Set on every move: zShot never activates, so cursor rects alone don't reliably hold.
             if !toolStrip.isHidden && toolStrip.frame.contains(event.locationInWindow) {
                 NSCursor.arrow.set()
-            } else if let selection = renderedSelection,
-                      let handle = SelectionHandle.hit(point, in: selection, radius: ScreenshotSession.handleRadius) {
+            } else if let rect = renderedHandles,
+                      let handle = SelectionHandle.hit(point, in: rect, radius: ScreenshotSession.handleRadius) {
                 ResizeCursor.cursor(for: handle).set()
             } else {
                 ScreenshotCursor.shared.set()
@@ -589,7 +590,8 @@ private final class CanvasView: NSView {
     }
 }
 
-/// The Selection's eight resize handles. Each display draws the part of each handle that falls on it.
+/// The eight resize handles of the Selection, or of the hovered window or display before there is one.
+/// Each display draws the part of each handle that falls on it.
 private final class HandlesView: NSView {
     private static let diameter: CGFloat = 9
     private let dots: [CALayer] = SelectionHandle.allCases.map { _ in CALayer() }
@@ -620,14 +622,15 @@ private final class HandlesView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// `selection` is in this view's coordinates; nil hides every handle. Call inside a transaction with actions disabled.
-    func update(selection: CGRect?) {
+    /// `rect` is the session's handle layout in this view's coordinates; nil hides every handle.
+    /// Call inside a transaction with actions disabled.
+    func update(rect: CGRect?) {
         for (handle, dot) in zip(SelectionHandle.allCases, dots) {
-            guard let selection, handle.isAvailable(on: selection, radius: ScreenshotSession.handleRadius) else {
+            guard let rect, handle.isAvailable(on: rect, radius: ScreenshotSession.handleRadius) else {
                 dot.isHidden = true
                 continue
             }
-            dot.position = handle.point(in: selection)
+            dot.position = handle.point(in: rect)
             dot.isHidden = !dot.frame.intersects(bounds)
         }
     }

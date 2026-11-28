@@ -60,6 +60,7 @@ final class ScreenshotController {
         let mouse = NSEvent.mouseLocation
         let displays = panels.map { $0.screenFrame }
         session = ScreenshotSession(displays: displays, windows: [], style: preferences.toolStyle, mouse: mouse)
+        session?.handleArea = panels.map { $0.displayScreen.visibleFrame }
         render()
         for panel in panels {
             panel.show()

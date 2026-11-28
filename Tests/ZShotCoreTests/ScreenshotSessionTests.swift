@@ -350,3 +350,67 @@ private func resizableSession() -> ScreenshotSession {
     #expect(SelectionHandle.hit(CGPoint(x: 10, y: 0), in: narrow, radius: radius) == nil)
     #expect(SelectionHandle.hit(CGPoint(x: 10, y: 100), in: narrow, radius: radius) == nil)
 }
+
+@Test func grabbingAHoveredWindowsCornerResizesItFromTheWindowFrame() {
+    var session = makeSession()
+    _ = session.handle(.mouseMoved(CGPoint(x: 150, y: 150)))
+    // Just outside the front window, over the window behind it: the corner's handle still holds the hover.
+    let grab = CGPoint(x: 97, y: 98)
+    _ = session.handle(.mouseMoved(grab))
+    #expect(hovered(session) == frontWindow)
+    _ = session.handle(.mouseDown(grab))
+    #expect(session.activeHandle == .bottomLeft)
+    _ = session.handle(.mouseDragged(CGPoint(x: 47, y: 48)))
+    _ = session.handle(.mouseUp(CGPoint(x: 47, y: 48)))
+    #expect(selected(session) == CGRect(x: 50, y: 50, width: 350, height: 250))
+    #expect(session.selectedWindow == nil)
+    #expect(session.activeHandle == nil)
+}
+
+@Test func grabbingAndReleasingAHoveredWindowsHandleSelectsTheWindow() {
+    var session = makeSession()
+    let grab = CGPoint(x: 398, y: 298)
+    _ = session.handle(.mouseMoved(grab))
+    drag(&session, from: grab, to: grab)
+    #expect(selected(session) == frontWindow)
+    #expect(session.selectedWindow?.frame == frontWindow)
+    #expect(session.activeHandle == nil)
+}
+
+@Test func grabbingADesktopHandleResizesFromTheDisplay() {
+    var session = makeSession()
+    let grab = CGPoint(x: 1436, y: 896)
+    _ = session.handle(.mouseMoved(grab))
+    _ = session.handle(.mouseDown(grab))
+    #expect(session.activeHandle == .topRight)
+    _ = session.handle(.mouseDragged(CGPoint(x: 1000, y: 700)))
+    _ = session.handle(.mouseUp(CGPoint(x: 1000, y: 700)))
+    #expect(selected(session) == CGRect(x: 0, y: 0, width: 1004, height: 704))
+    #expect(session.selectedWindow == nil)
+}
+
+/// The main display without a 70 pt Dock and a 25 pt menu bar.
+private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
+
+@Test func handlesOfASelectionUnderTheDockSitInsideTheUsableArea() {
+    var session = makeSession()
+    session.handleArea = [usableMain]
+    let selection = CGRect(x: 200, y: 20, width: 400, height: 300)
+    let layout = session.handleLayout(for: selection)
+    #expect(layout == CGRect(x: 200, y: 79, width: 400, height: 241))
+    for handle in SelectionHandle.allCases {
+        #expect(usableMain.contains(handle.point(in: layout)))
+    }
+}
+
+@Test func draggingAClampedBottomHandleMovesTheRealBottomEdge() {
+    var session = makeSession()
+    session.handleArea = [usableMain]
+    drag(&session, from: CGPoint(x: 200, y: 20), to: CGPoint(x: 600, y: 320))
+    #expect(selected(session) == CGRect(x: 200, y: 20, width: 400, height: 300))
+    _ = session.handle(.mouseDown(CGPoint(x: 401, y: 80)))
+    #expect(session.activeHandle == .bottom)
+    _ = session.handle(.mouseDragged(CGPoint(x: 401, y: 150)))
+    _ = session.handle(.mouseUp(CGPoint(x: 401, y: 150)))
+    #expect(selected(session) == CGRect(x: 200, y: 149, width: 400, height: 171))
+}
