@@ -128,6 +128,11 @@ final class OverlayPanel: NSPanel {
         }
 
         let handleRect = session.handleTarget.map { session.handleLayout(for: $0) }
+        // TEMP diagnostics for the handle cut-off bug; remove once fixed.
+        if handleRect != renderedHandles, let target = session.handleTarget, let handleRect {
+            let area = session.handleArea.map { NSStringFromRect($0) }.joined(separator: " ")
+            Log.app.notice("diag handles screen=\(NSStringFromRect(self.screenFrame), privacy: .public) target=\(NSStringFromRect(target), privacy: .public) layout=\(NSStringFromRect(handleRect), privacy: .public) area=\(area, privacy: .public)")
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         chrome.update(hole: hole)

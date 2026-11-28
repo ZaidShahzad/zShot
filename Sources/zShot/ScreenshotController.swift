@@ -61,6 +61,10 @@ final class ScreenshotController {
         let displays = panels.map { $0.screenFrame }
         session = ScreenshotSession(displays: displays, windows: [], style: preferences.toolStyle, mouse: mouse)
         session?.handleArea = panels.map { $0.displayScreen.visibleFrame }
+        // TEMP diagnostics for the handle cut-off bug; remove once fixed.
+        for panel in panels {
+            Log.app.notice("diag screen frame=\(NSStringFromRect(panel.screenFrame), privacy: .public) visible=\(NSStringFromRect(panel.displayScreen.visibleFrame), privacy: .public) scale=\(panel.displayScreen.backingScaleFactor, privacy: .public)")
+        }
         render()
         for panel in panels {
             panel.show()
