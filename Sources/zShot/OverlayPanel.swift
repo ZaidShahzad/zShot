@@ -34,7 +34,8 @@ final class OverlayPanel: NSPanel {
         handles = HandlesView(frame: bounds)
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 
-        level = .screenSaver
+        // Above everything, the Dock included: macOS 26 draws the Dock over screen-saver-level windows.
+        level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = false
         backgroundColor = .clear
