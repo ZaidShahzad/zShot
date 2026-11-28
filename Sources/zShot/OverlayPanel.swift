@@ -34,7 +34,7 @@ final class OverlayPanel: NSPanel {
         handles = HandlesView(frame: bounds)
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 
-        // Above everything, the Dock included: macOS 26 draws the Dock over screen-saver-level windows.
+        // The shielding level sits above every other window, the Dock included, so nothing draws over Screenshot mode.
         level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = false

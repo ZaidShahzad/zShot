@@ -428,3 +428,20 @@ private let usableMain = CGRect(x: 0, y: 70, width: 1440, height: 805)
         #expect(usableMain.insetBy(dx: clearance, dy: clearance).contains(point))
     }
 }
+
+@Test func handlesStayAboveTheDockWithThreeDisplaysLikeTheOwnersDesk() {
+    // Built-in display in the middle with an 82 pt Dock and a 33 pt menu bar, externals left (raised 50 pt) and right.
+    let builtIn = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let builtInUsable = CGRect(x: 0, y: 82, width: 1512, height: 867)
+    let right = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+    let left = CGRect(x: -1920, y: 50, width: 1920, height: 1080)
+    var session = ScreenshotSession(displays: [builtIn, right, left], windows: [], style: ToolStyle(), mouse: CGPoint(x: 700, y: 500))
+    session.handleArea = [builtInUsable, right, left]
+    // A maximized window running behind the Dock and poking onto the right display.
+    let window = CGRect(x: 0, y: 0, width: 1530, height: 949)
+    let layout = session.handleLayout(for: window)
+    let clearance = ScreenshotSession.handleClearance - 1
+    for handle in SelectionHandle.allCases {
+        #expect(builtInUsable.insetBy(dx: clearance, dy: clearance).contains(handle.point(in: layout)))
+    }
+}
